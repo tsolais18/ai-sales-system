@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Store Admin Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body class="dark-mode">
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="logo">
+                <i data-lucide="shopping-bag"></i>
+                <span>CupaAdmin</span>
+            </div>
+            <ul class="nav-links">
+                <li class="active" onclick="showSection('dashboard')">
+                    <i data-lucide="layout-dashboard"></i> Dashboard
+                </li>
+                <li onclick="showSection('products')">
+                    <i data-lucide="package"></i> Products
+                </li>
+                <li onclick="showSection('orders')">
+                    <i data-lucide="shopping-cart"></i> Orders
+                </li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="content">
+            <header>
+                <h1 id="section-title">Dashboard</h1>
+                <div class="user-profile">
+                    <span id="stats-revenue">Total Revenue: ₦0</span>
+                </div>
+            </header>
+
+            <!-- Dashboard Section -->
+            <section id="dashboard-section" class="active">
+                <div class="stats-grid">
+                    <div class="stat-card glass">
+                        <div class="stat-icon"><i data-lucide="package"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-products">0</h3>
+                            <p>Products</p>
+                        </div>
+                    </div>
+                    <div class="stat-card glass">
+                        <div class="stat-icon"><i data-lucide="shopping-cart"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-orders">0</h3>
+                            <p>Total Orders</p>
+                        </div>
+                    </div>
+                    <div class="stat-card glass">
+                        <div class="stat-icon alert"><i data-lucide="clock"></i></div>
+                        <div class="stat-info">
+                            <h3 id="stat-pending">0</h3>
+                            <p>Pending Orders</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Products Section -->
+            <section id="products-section">
+                <div class="section-header">
+                    <h2>Manage Products</h2>
+                    <button class="btn-primary" onclick="openModal('productModal')">
+                        <i data-lucide="plus"></i> Add Product
+                    </button>
+                </div>
+                <div class="table-container glass">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Description</th>
+                                <th>Price</th>
+                                <th>Stock</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="product-table-body">
+                            <!-- JS populated -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Orders Section -->
+            <section id="orders-section">
+                <div class="section-header">
+                    <h2>Recent Orders</h2>
+                </div>
+                <div class="table-container glass">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Customer</th>
+                                <th>Items</th>
+                                <th>Total</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="order-table-body">
+                            <!-- JS populated -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="productModal" class="modal">
+        <div class="modal-content glass">
+            <span class="close" onclick="closeModal('productModal')">&times;</span>
+            <h2 id="modal-title">Add New Product</h2>
+            <form id="productForm">
+                <input type="hidden" id="edit-id">
+                <div class="form-group">
+                    <label>Product Name</label>
+                    <input type="text" id="p-name" required placeholder="e.g. Vintage Leather Watch">
+                </div>
+                <div class="form-group">
+                    <label>Description / Details</label>
+                    <textarea id="p-desc" required placeholder="e.g. Genuine leather, water resistant..."></textarea>
+                </div>
+                <div class="form-group row">
+                    <div>
+                        <label>Category</label>
+                        <input type="text" id="p-cat" required placeholder="e.g. Accessories">
+                    </div>
+                    <div>
+                        <label>Price (₦)</label>
+                        <input type="number" id="p-price" required placeholder="e.g. 15000">
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary full">Save Product</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // Section Toggling
+        function showSection(section) {
+            document.querySelectorAll('main section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-links li').forEach(l => l.classList.remove('active'));
+
+            document.getElementById(`${section}-section`).classList.add('active');
+            document.querySelector(`.nav-links li[onclick="showSection('${section}')"]`).classList.add('active');
+            document.getElementById('section-title').innerText = section.charAt(0).toUpperCase() + section.slice(1);
+
+            if (section === 'products') loadProducts();
+            if (section === 'orders') loadOrders();
+            if (section === 'dashboard') loadStats();
+        }
+
+        // Modal Logic
+        function openModal(id) { document.getElementById(id).style.display = "block"; }
+        function closeModal(id) { document.getElementById(id).style.display = "none"; document.getElementById('productForm').reset(); }
+
+        // Fetching Data
+        async function loadStats() {
+            const res = await fetch('/api/stats');
+            const data = await res.json();
+            document.getElementById('stat-products').innerText = data.total_products;
+            document.getElementById('stat-orders').innerText = data.total_orders;
+            document.getElementById('stat-pending').innerText = data.pending_orders;
+            document.getElementById('stats-revenue').innerText = `Month Rev: ₦${data.month_revenue.toLocaleString()}`;
+        }
+
+        async function loadProducts() {
+            const res = await fetch('/api/products');
+            const products = await res.json();
+            const body = document.getElementById('product-table-body');
+            body.innerHTML = products.map(p => `
+                <tr>
+                    <td>${p.id}</td>
+                    <td><strong>${p.title}</strong></td>
+                    <td>${p.author}</td>
+                    <td>₦${p.price.toLocaleString()}</td>
+                    <td><span class="badge ${p.in_stock ? 'success' : 'danger'}">${p.in_stock ? 'In Stock' : 'Out'}</span></td>
+                    <td>
+                        <button onclick="toggleStock(${p.id}, ${!p.in_stock})" class="btn-icon"><i data-lucide="refresh-cw"></i></button>
+                        <button onclick="deleteProduct(${p.id})" class="btn-icon danger"><i data-lucide="trash"></i></button>
+                    </td>
+                </tr>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        async function loadOrders() {
+            const res = await fetch('/api/orders');
+            const orders = await res.json();
+            const body = document.getElementById('order-table-body');
+            body.innerHTML = orders.map(o => `
+                <tr>
+                    <td>#${o.id}</td>
+                    <td>${o.customer_name}<br><small>${o.location}</small></td>
+                    <td>${o.items.map(i => `${i.title} x${i.quantity}`).join(', ')}</td>
+                    <td>₦${o.total.toLocaleString()}</td>
+                    <td><span class="badge ${o.status}">${o.status}</span></td>
+                    <td>
+                        ${o.status === 'pending' ? `<button onclick="updateOrderStatus(${o.id}, 'confirmed')" class="btn-sm success">Confirm</button>` : ''}
+                        ${o.status === 'pending' ? `<button onclick="updateOrderStatus(${o.id}, 'cancelled')" class="btn-sm danger">Cancel</button>` : ''}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Form Submission
+        document.getElementById('productForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData();
+            formData.append('title', document.getElementById('p-name').value);
+            formData.append('author', document.getElementById('p-desc').value);
+            formData.append('category', document.getElementById('p-cat').value);
+            formData.append('price', document.getElementById('p-price').value);
+
+            await fetch('/api/products', { method: 'POST', body: formData });
+            closeModal('productModal');
+            loadProducts();
+        };
+
+        async function toggleStock(id, status) {
+            await fetch(`/api/products/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ in_stock: status })
+            });
+            loadProducts();
+        }
+
+        async function deleteProduct(id) {
+            if (confirm('Delete this product permanently?')) {
+                await fetch(`/api/products/${id}`, { method: 'DELETE' });
+                loadProducts();
+            }
+        }
+
+        async function updateOrderStatus(id, status) {
+            await fetch(`/api/orders/${id}/status`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: status })
+            });
+            loadOrders();
+        }
+
+        // Initial Load
+        loadStats();
+    </script>
+</body>
+
+</html>
