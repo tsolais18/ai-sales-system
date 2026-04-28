@@ -4,7 +4,6 @@ from telegram.ext import ContextTypes, CommandHandler
 from supabase_client import supabase
 from orders import get_orders_by_user, format_order_summary
 
-# ── Admin IDs (add more as needed) ───────────────────────
 ADMIN_IDS = [5851987998]
 
 
@@ -13,7 +12,6 @@ def is_admin(user_id: int) -> bool:
 
 
 def admin_only(func):
-    """Decorator to restrict commands to admins only."""
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(update.effective_user.id):
             await update.message.reply_text("⛔ You don't have permission to use this command.")
@@ -45,10 +43,9 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── /addproduct ───────────────────────────────────────────
 @admin_only
 async def add_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Usage: /addproduct Name | Description | Price"""
+    business_id = context.bot_data.get("business_id", 1)
     raw = " ".join(context.args)
     parts = [p.strip() for p in raw.split("|")]
-
     if len(parts) != 3:
         await update.message.reply_text(
             "❌ Wrong format.\n"
@@ -59,7 +56,6 @@ async def add_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     name, description, price_str = parts
-
     try:
         price = float(price_str.replace(",", "").replace("₦", "").strip())
     except ValueError:
@@ -71,6 +67,7 @@ async def add_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "description": description,
         "price": price,
         "stock": 1,
+        "business_id": business_id,
     }).execute()
 
     if response.data:
@@ -91,18 +88,17 @@ async def add_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── /outofstock ───────────────────────────────────────────
 @admin_only
 async def out_of_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    business_id = context.bot_data.get("business_id", 1)
     if not context.args:
         await update.message.reply_text("Usage: `/outofstock <product_id>`", parse_mode="Markdown")
         return
-
     try:
         product_id = int(context.args[0])
     except ValueError:
         await update.message.reply_text("❌ Invalid product ID.")
         return
 
-    response = supabase.table("products").update({"stock": 0}).eq("id", product_id).execute()
-
+    response = supabase.table("products").update({"stock": 0}).eq("id", product_id).eq("business_id", business_id).execute()
     if response.data:
         await update.message.reply_text(f"✅ Product ID `{product_id}` marked as out of stock (stock = 0).", parse_mode="Markdown")
     else:
@@ -112,18 +108,17 @@ async def out_of_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── /restock ──────────────────────────────────────────────
 @admin_only
 async def restock(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    business_id = context.bot_data.get("business_id", 1)
     if not context.args:
         await update.message.reply_text("Usage: `/restock <product_id>`", parse_mode="Markdown")
         return
-
     try:
         product_id = int(context.args[0])
     except ValueError:
         await update.message.reply_text("❌ Invalid product ID.")
         return
 
-    response = supabase.table("products").update({"stock": 1}).eq("id", product_id).execute()
-
+    response = supabase.table("products").update({"stock": 1}).eq("id", product_id).eq("business_id", business_id).execute()
     if response.data:
         await update.message.reply_text(f"✅ Product ID `{product_id}` restocked (stock = 1).", parse_mode="Markdown")
     else:
@@ -133,10 +128,10 @@ async def restock(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── /setstock ─────────────────────────────────────────────
 @admin_only
 async def set_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    business_id = context.bot_data.get("business_id", 1)
     if len(context.args) < 2:
         await update.message.reply_text("Usage: `/setstock <product_id> <quantity>`", parse_mode="Markdown")
         return
-
     try:
         product_id = int(context.args[0])
         quantity = int(context.args[1])
@@ -144,8 +139,7 @@ async def set_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Invalid product ID or quantity.")
         return
 
-    response = supabase.table("products").update({"stock": quantity}).eq("id", product_id).execute()
-
+    response = supabase.table("products").update({"stock": quantity}).eq("id", product_id).eq("business_id", business_id).execute()
     if response.data:
         await update.message.reply_text(f"✅ Product ID `{product_id}` stock set to {quantity}.", parse_mode="Markdown")
     else:
@@ -155,30 +149,29 @@ async def set_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── /deleteproduct ────────────────────────────────────────
 @admin_only
 async def delete_product(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    business_id = context.bot_data.get("business_id", 1)
     if not context.args:
         await update.message.reply_text("Usage: `/deleteproduct <product_id>`", parse_mode="Markdown")
         return
-
     try:
         product_id = int(context.args[0])
     except ValueError:
         await update.message.reply_text("❌ Invalid product ID.")
         return
 
-    response = supabase.table("products").delete().eq("id", product_id).execute()
-
+    response = supabase.table("products").delete().eq("id", product_id).eq("business_id", business_id).execute()
     if response.data:
         await update.message.reply_text(f"🗑 Product ID `{product_id}` deleted permanently.", parse_mode="Markdown")
     else:
         await update.message.reply_text(f"❌ Product ID `{product_id}` not found.")
 
 
-# ── /products (admin view — all including out of stock) ───
+# ── /products (admin view) ────────────────────────────────
 @admin_only
 async def admin_list_products(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    response = supabase.table("products").select("*").order("id").execute()
+    business_id = context.bot_data.get("business_id", 1)
+    response = supabase.table("products").select("*").eq("business_id", business_id).order("id").execute()
     products = response.data or []
-
     if not products:
         await update.message.reply_text("No products in the database.")
         return
@@ -187,22 +180,22 @@ async def admin_list_products(update: Update, context: ContextTypes.DEFAULT_TYPE
     for p in products:
         status = "✅" if p["stock"] > 0 else "❌"
         lines.append(f"{status} `{p['id']}` | *{p['name']}* — ₦{p['price']:,.0f} | Stock: {p['stock']}")
-
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
 # ── /pending ──────────────────────────────────────────────
 @admin_only
 async def pending_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    business_id = context.bot_data.get("business_id", 1)
     response = (
         supabase.table("orders")
         .select("*")
+        .eq("business_id", business_id)
         .eq("status", "pending")
         .order("created_at", desc=True)
         .execute()
     )
     orders = response.data or []
-
     if not orders:
         await update.message.reply_text("📭 No pending orders.")
         return
@@ -224,18 +217,17 @@ async def pending_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── /confirm ──────────────────────────────────────────────
 @admin_only
 async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    business_id = context.bot_data.get("business_id", 1)
     if not context.args:
         await update.message.reply_text("Usage: `/confirm <order_id>`", parse_mode="Markdown")
         return
-
     try:
         order_id = int(context.args[0])
     except ValueError:
         await update.message.reply_text("❌ Invalid order ID.")
         return
 
-    response = supabase.table("orders").update({"status": "confirmed"}).eq("id", order_id).execute()
-
+    response = supabase.table("orders").update({"status": "confirmed"}).eq("id", order_id).eq("business_id", business_id).execute()
     if response.data:
         order = response.data[0]
         await update.message.reply_text(
@@ -257,18 +249,17 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── /cancelorder ──────────────────────────────────────────
 @admin_only
 async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    business_id = context.bot_data.get("business_id", 1)
     if not context.args:
         await update.message.reply_text("Usage: `/cancelorder <order_id>`", parse_mode="Markdown")
         return
-
     try:
         order_id = int(context.args[0])
     except ValueError:
         await update.message.reply_text("❌ Invalid order ID.")
         return
 
-    response = supabase.table("orders").update({"status": "cancelled"}).eq("id", order_id).execute()
-
+    response = supabase.table("orders").update({"status": "cancelled"}).eq("id", order_id).eq("business_id", business_id).execute()
     if response.data:
         await update.message.reply_text(f"🚫 Order #{order_id} cancelled.", parse_mode="Markdown")
     else:

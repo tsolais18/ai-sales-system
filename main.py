@@ -35,9 +35,29 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ── Telegram Bot Setup ────────────────────────────────────
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+DEFAULT_BUSINESS_ID = 1
 
 telegram_app: Application = None
 
+
+async def get_business_id_for_telegram(token: str) -> int:
+    """Fetch the business_id linked to this Telegram bot token."""
+    try:
+        res = supabase.table("channels") \
+            .select("business_id") \
+            .eq("channel_type", "telegram") \
+            .eq("identifier", token) \
+            .single() \
+            .execute()
+        if res.data:
+            return res.data["business_id"]
+    except Exception as e:
+        logger.error(f"Failed to resolve business_id for token: {e}")
+    return DEFAULT_BUSINESS_ID
+
+
+# ── Telegram command handlers ─────────────────────────────
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.effective_user.first_name
@@ -55,7 +75,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    products = get_all_products()
+    business_id = context.bot_data.get("business_id", DEFAULT_BUSINESS_ID)
+    products = get_all_products(business_id)
     if not products:
         await update.message.reply_text("😔 No products in stock right now. Check back soon!")
         return
@@ -67,11 +88,12 @@ async def catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    business_id = context.bot_data.get("business_id", DEFAULT_BUSINESS_ID)
     query = " ".join(context.args)
     if not query:
         await update.message.reply_text("Usage: /search <product name>")
         return
-    products = search_products(query)
+    products = search_products(query, business_id)
     if not products:
         await update.message.reply_text(f"😔 No results for *{query}*.", parse_mode="Markdown")
         return
@@ -86,6 +108,7 @@ async def cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    business_id = context.bot_data.get("business_id", DEFAULT_BUSINESS_ID)
     user_id = str(update.effective_user.id)
     args = context.args
     if not args:
@@ -97,14 +120,15 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("❌ Invalid format. Use: /add <product_id> [quantity]")
         return
-    reply = await add_to_cart(user_id, product_id, quantity)
+    reply = await add_to_cart(user_id, product_id, quantity, business_id)
     await update.message.reply_text(reply, parse_mode="Markdown")
 
 
 async def orders_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from orders import get_orders_by_user, format_order_summary
+    business_id = context.bot_data.get("business_id", DEFAULT_BUSINESS_ID)
     user_id = str(update.effective_user.id)
-    user_orders = get_orders_by_user(user_id)
+    user_orders = get_orders_by_user(user_id, business_id)
     if not user_orders:
         await update.message.reply_text("📭 You have no orders yet.")
         return
@@ -113,18 +137,17 @@ async def orders_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    business_id = context.bot_data.get("business_id", DEFAULT_BUSINESS_ID)
     user_id = str(update.effective_user.id)
     user_message = update.message.text
 
-    # Send "typing" action but don't fail if network hiccups
     try:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     except telegram.error.NetworkError as e:
-        logger.debug(f"Could not send chat action (network issue): {e}")
+        logger.debug(f"Could not send chat action: {e}")
 
-    reply = await handle_message(user_id, user_message, bot=context.bot)
+    reply = await handle_message(user_id, user_message, bot=context.bot, business_id=business_id)
 
-    # Send the reply with a simple retry on network errors (3 attempts)
     for attempt in range(3):
         try:
             await update.message.reply_text(reply, parse_mode="Markdown")
@@ -132,24 +155,18 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except telegram.error.NetworkError as e:
             logger.warning(f"Network error on reply attempt {attempt+1}/3: {e}")
             if attempt < 2:
-                await asyncio.sleep(2 ** attempt)  # exponential backoff: 1s, 2s
+                await asyncio.sleep(2 ** attempt)
             else:
                 logger.error("Failed to send reply after 3 attempts")
-                await update.message.reply_text(
-                    "❌ Sorry, a network issue occurred. Please try again in a moment."
-                )
+                await update.message.reply_text("❌ Sorry, a network issue occurred. Please try again.")
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Global error handler to catch and log network errors without crashing."""
     if isinstance(context.error, telegram.error.NetworkError):
         logger.warning(f"⚠️ Network issue – will retry on next update: {context.error}")
-        # Optionally notify the user if update is available
         if update and hasattr(update, 'effective_message'):
             try:
-                await update.effective_message.reply_text(
-                    "❌ Connection issue, please try again in a moment."
-                )
+                await update.effective_message.reply_text("❌ Connection issue, please try again.")
             except Exception:
                 pass
     else:
@@ -158,20 +175,15 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 def build_telegram_app() -> Application:
     token = os.getenv("TELEGRAM_BOT_TOKEN")
-
-    # Create a resilient HTTP client with longer timeouts
     request = HTTPXRequest(
-        connect_timeout=30.0,   # Time to establish TCP connection
-        read_timeout=30.0,      # Time to wait for response data
-        write_timeout=30.0,     # Time to send request
-        pool_timeout=30.0,      # Time to wait for a connection from pool
-        # If network issues persist, uncomment the next line to force HTTP/1.1:
-        # http_version="1.1",
+        connect_timeout=30.0,
+        read_timeout=30.0,
+        write_timeout=30.0,
+        pool_timeout=30.0,
     )
 
     app = Application.builder().token(token).request(request).build()
 
-    # Add command handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("catalog", catalog))
     app.add_handler(CommandHandler("search", search))
@@ -180,12 +192,9 @@ def build_telegram_app() -> Application:
     app.add_handler(CommandHandler("orders", orders_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
-    # Register admin handlers from admin.py
     register_admin_handlers(app)
 
-    # Add global error handler
     app.add_error_handler(error_handler)
-
     return app
 
 
@@ -193,15 +202,19 @@ def build_telegram_app() -> Application:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Start Telegram bot polling alongside FastAPI."""
     global telegram_app
     try:
         telegram_app = build_telegram_app()
         await telegram_app.initialize()
         await telegram_app.start()
+
+        # Resolve business_id and store in bot_data
+        bid = await get_business_id_for_telegram(TELEGRAM_BOT_TOKEN)
+        telegram_app.bot_data["business_id"] = bid
+        logger.info(f"🤖 Telegram bot started for business_id={bid}")
+
         await telegram_app.bot.delete_webhook(drop_pending_updates=True)
         await telegram_app.updater.start_polling()
-        logger.info("🤖 Telegram bot started and polling...")
     except Exception as e:
         logger.error(f"❌ Failed to start Telegram bot: {e}")
 
@@ -218,7 +231,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Store Admin API", lifespan=lifespan)
 
-# Mount static directory only if it exists
+# Static files with safety check
 if os.path.isdir("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 else:
@@ -228,6 +241,7 @@ templates = Jinja2Templates(directory="templates")
 
 
 # ── Web Admin Routes ──────────────────────────────────────
+# Note: API routes currently use DEFAULT_BUSINESS_ID until proper auth is added.
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request):
@@ -236,7 +250,8 @@ async def admin_dashboard(request: Request):
 
 @app.get("/api/products")
 async def api_get_products():
-    response = supabase.table("products").select("*").order("id").execute()
+    business_id = DEFAULT_BUSINESS_ID  # TODO: get from authenticated user's business
+    response = supabase.table("products").select("*").eq("business_id", business_id).order("id").execute()
     return response.data or []
 
 
@@ -246,11 +261,13 @@ async def api_add_product(
     description: str = Form(...),
     price: float = Form(...),
 ):
+    business_id = DEFAULT_BUSINESS_ID
     response = supabase.table("products").insert({
         "name": name,
         "description": description,
         "price": price,
         "stock": 1,
+        "business_id": business_id,
     }).execute()
     if response.data:
         return JSONResponse(status_code=201, content=response.data[0])
@@ -259,8 +276,9 @@ async def api_add_product(
 
 @app.patch("/api/products/{product_id}")
 async def api_update_product(product_id: int, request: Request):
+    business_id = DEFAULT_BUSINESS_ID
     body = await request.json()
-    response = supabase.table("products").update(body).eq("id", product_id).execute()
+    response = supabase.table("products").update(body).eq("id", product_id).eq("business_id", business_id).execute()
     if response.data:
         return response.data[0]
     raise HTTPException(status_code=404, detail="Product not found")
@@ -268,7 +286,8 @@ async def api_update_product(product_id: int, request: Request):
 
 @app.delete("/api/products/{product_id}")
 async def api_delete_product(product_id: int):
-    response = supabase.table("products").delete().eq("id", product_id).execute()
+    business_id = DEFAULT_BUSINESS_ID
+    response = supabase.table("products").delete().eq("id", product_id).eq("business_id", business_id).execute()
     if response.data:
         return {"success": True}
     raise HTTPException(status_code=404, detail="Product not found")
@@ -276,16 +295,18 @@ async def api_delete_product(product_id: int):
 
 @app.get("/api/orders")
 async def api_get_orders(status: str = None):
-    return get_all_orders(status=status)
+    business_id = DEFAULT_BUSINESS_ID
+    return get_all_orders(business_id, status=status)
 
 
 @app.patch("/api/orders/{order_id}/status")
 async def api_update_order_status(order_id: int, request: Request):
+    business_id = DEFAULT_BUSINESS_ID
     body = await request.json()
     new_status = body.get("status")
     if new_status not in ("pending", "confirmed", "cancelled"):
         raise HTTPException(status_code=400, detail="Invalid status")
-    result = update_order_status(order_id, new_status)
+    result = update_order_status(order_id, business_id, new_status)
     if result:
         return result[0]
     raise HTTPException(status_code=404, detail="Order not found")
@@ -293,14 +314,15 @@ async def api_update_order_status(order_id: int, request: Request):
 
 @app.get("/api/stats")
 async def api_stats():
+    business_id = DEFAULT_BUSINESS_ID
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
     today = now.strftime("%Y-%m-%d")
     this_month = now.strftime("%Y-%m")
 
-    orders_res = supabase.table("orders").select("*").execute()
+    orders_res = supabase.table("orders").select("*").eq("business_id", business_id).execute()
     all_orders = orders_res.data or []
-    products_res = supabase.table("products").select("*").execute()
+    products_res = supabase.table("products").select("*").eq("business_id", business_id).execute()
     all_products = products_res.data or []
 
     today_orders = [o for o in all_orders if o["created_at"][:10] == today]

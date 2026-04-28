@@ -1,26 +1,36 @@
 from supabase_client import supabase
 
-
-def get_all_products():
-    response = supabase.table("products").select("*").gt("stock", 0).execute()
-    return response.data or []
-
-
-def search_products(query: str):
+def get_all_products(business_id: int):
     response = (
         supabase.table("products")
         .select("*")
+        .eq("business_id", business_id)
+        .gt("stock", 0)
+        .execute()
+    )
+    return response.data or []
+
+def search_products(query: str, business_id: int):
+    response = (
+        supabase.table("products")
+        .select("*")
+        .eq("business_id", business_id)
         .or_(f"name.ilike.%{query}%,description.ilike.%{query}%")
         .gt("stock", 0)
         .execute()
     )
     return response.data or []
 
-
-def get_product_by_id(product_id: int):
-    response = supabase.table("products").select("*").eq("id", product_id).single().execute()
+def get_product_by_id(product_id: int, business_id: int):
+    response = (
+        supabase.table("products")
+        .select("*")
+        .eq("id", product_id)
+        .eq("business_id", business_id)
+        .single()
+        .execute()
+    )
     return response.data
-
 
 def format_product(product: dict) -> str:
     in_stock = product.get("stock", 0) > 0
@@ -31,7 +41,6 @@ def format_product(product: dict) -> str:
         f"{'✅ In Stock' if in_stock else '❌ Out of Stock'}\n"
         f"🆔 ID: `{product['id']}`"
     )
-
 
 def format_catalog(products: list) -> str:
     if not products:

@@ -57,8 +57,8 @@ def get_session(user_id: str) -> dict:
     return sessions[user_id]
 
 
-def build_catalog_context() -> str:
-    products = get_all_products()
+def build_catalog_context(business_id: int) -> str:
+    products = get_all_products(business_id)
     if not products:
         return "No products currently in stock."
     lines = [
@@ -68,13 +68,13 @@ def build_catalog_context() -> str:
     return "CURRENT CATALOG:\n" + "\n".join(lines)
 
 
-def build_admin_data_context() -> str:
+def build_admin_data_context(business_id: int) -> str:
     now = datetime.now(timezone.utc)
     today = now.strftime("%Y-%m-%d")
 
-    orders_res = supabase.table("orders").select("*").order("created_at", desc=True).execute()
+    orders_res = supabase.table("orders").select("*").eq("business_id", business_id).order("created_at", desc=True).execute()
     all_orders = orders_res.data or []
-    products_res = supabase.table("products").select("*").execute()
+    products_res = supabase.table("products").select("*").eq("business_id", business_id).execute()
     all_products = products_res.data or []
 
     today_orders = [o for o in all_orders if o["created_at"][:10] == today]
@@ -148,19 +148,19 @@ def parse_addproduct_signal(reply: str):
     return None
 
 
-async def handle_message(user_id: str, user_message: str, bot=None) -> str:
+async def handle_message(user_id: str, user_message: str, bot=None, business_id: int = 1) -> str:
     session = get_session(user_id)
     is_admin_user = int(user_id) in ADMIN_IDS
 
     if is_admin_user:
-        return await handle_admin_message(user_id, user_message, session, bot)
+        return await handle_admin_message(user_id, user_message, session, bot, business_id)
     else:
-        return await handle_customer_message(user_id, user_message, session, bot)
+        return await handle_customer_message(user_id, user_message, session, bot, business_id)
 
 
-async def handle_admin_message(user_id: str, user_message: str, session: dict, bot=None) -> str:
-    admin_data = build_admin_data_context()
-    catalog_context = build_catalog_context()
+async def handle_admin_message(user_id: str, user_message: str, session: dict, bot=None, business_id: int = 1) -> str:
+    admin_data = build_admin_data_context(business_id)
+    catalog_context = build_catalog_context(business_id)
     admin_key = f"admin_{user_id}"
     if admin_key not in sessions:
         sessions[admin_key] = {"history": []}
@@ -179,6 +179,7 @@ async def handle_admin_message(user_id: str, user_message: str, session: dict, b
 
     product_data = parse_addproduct_signal(reply)
     if product_data:
+        product_data["business_id"] = business_id
         res = supabase.table("products").insert(product_data).execute()
         clean_reply = "\n".join(
             l for l in reply.split("\n") if not l.strip().startswith("##ADDPRODUCT##")
@@ -190,8 +191,8 @@ async def handle_admin_message(user_id: str, user_message: str, session: dict, b
     return reply
 
 
-async def handle_customer_message(user_id: str, user_message: str, session: dict, bot=None) -> str:
-    catalog_context = build_catalog_context()
+async def handle_customer_message(user_id: str, user_message: str, session: dict, bot=None, business_id: int = 1) -> str:
+    catalog_context = build_catalog_context(business_id)
     session["history"].append({"role": "user", "content": user_message})
 
     messages = [
@@ -206,7 +207,7 @@ async def handle_customer_message(user_id: str, user_message: str, session: dict
 
     customer_name, order_items, location = parse_order_signal(reply)
     if customer_name and order_items and location:
-        await save_order(user_id, customer_name, order_items, bot, location)
+        await save_order(user_id, customer_name, order_items, bot, location, business_id)
         clean_reply = "\n".join(
             l for l in reply.split("\n") if not l.strip().startswith("##ORDER##")
         ).strip()
@@ -216,12 +217,12 @@ async def handle_customer_message(user_id: str, user_message: str, session: dict
 
 
 async def save_order(
-    user_id: str, customer_name: str, items: list, bot=None, location: str = "Not provided"
+    user_id: str, customer_name: str, items: list, bot=None, location: str = "Not provided", business_id: int = 1
 ):
     enriched_items = []
     total = 0
     for item in items:
-        product = get_product_by_id(item["product_id"])
+        product = get_product_by_id(item["product_id"], business_id)
         if product:
             enriched_items.append({
                 "product_id": product["id"],
@@ -240,12 +241,11 @@ async def save_order(
         items=enriched_items,
         total=total,
         location=location,
+        business_id=business_id,
     )
 
     if order and bot:
-        items_text = "\n".join([
-            f"  • {i['name']} x{i['quantity']} — ₦{i['price']:,}" for i in enriched_items
-        ])
+        items_text = "\n".join([f"  • {i['name']} x{i['quantity']} — ₦{i['price']:,}" for i in enriched_items])
         admin_msg = (
             f"🛎 *New Order #{order['id']}!*\n\n"
             f"👤 *{customer_name}*\n"
@@ -263,9 +263,9 @@ async def save_order(
     return order
 
 
-async def add_to_cart(user_id: str, product_id: int, quantity: int = 1) -> str:
+async def add_to_cart(user_id: str, product_id: int, quantity: int = 1, business_id: int = 1) -> str:
     session = get_session(user_id)
-    product = get_product_by_id(product_id)
+    product = get_product_by_id(product_id, business_id)
     if not product:
         return f"❌ Product with ID {product_id} not found."
     for item in session["cart"]:
