@@ -360,7 +360,9 @@ async def api_stats():
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request):
     """Render the full admin dashboard page."""
-    return templates.TemplateResponse("admin.html", {"request": request})
+    template = templates.get_template("admin.html")
+    content = template.render({"request": request})
+    return HTMLResponse(content)
 
 
 @app.get("/admin/products", response_class=HTMLResponse)
@@ -372,10 +374,9 @@ async def admin_products_partial(request: Request):
         .eq("business_id", business_id) \
         .order("id") \
         .execute()
-    return templates.TemplateResponse("_products.html", {
-        "request": request,
-        "products": products.data or []
-    })
+    template = templates.get_template("_products.html")
+    content = template.render({"request": request, "products": products.data or []})
+    return HTMLResponse(content)
 
 
 @app.get("/admin/orders", response_class=HTMLResponse)
@@ -389,10 +390,9 @@ async def admin_orders_partial(request: Request, status: str = None):
     if status:
         query = query.eq("status", status)
     orders = query.execute()
-    return templates.TemplateResponse("_orders.html", {
-        "request": request,
-        "orders": orders.data or []
-    })
+    template = templates.get_template("_orders.html")
+    content = template.render({"request": request, "orders": orders.data or []})
+    return HTMLResponse(content)
 
 
 # Override the old /api/products GET to return JSON (unchanged) –
