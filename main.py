@@ -585,6 +585,17 @@ async def debug_last_orders():
     return res.data or []
 
 
+@app.get("/debug/orders-raw")
+async def debug_orders_raw():
+    business_id = DEFAULT_BUSINESS_ID
+    res = supabase.table("orders") \
+        .select("*") \
+        .eq("business_id", business_id) \
+        .order("created_at", desc=True) \
+        .execute()
+    return {"count": len(res.data or []), "data": res.data}
+
+
 # ── Entry Point ───────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
