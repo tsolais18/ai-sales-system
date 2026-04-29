@@ -48,10 +48,10 @@ async def get_business_id_for_telegram(token: str) -> int:
             .select("business_id") \
             .eq("channel_type", "telegram") \
             .eq("identifier", token) \
-            .single() \
+            .limit(1) \
             .execute()
-        if res.data:
-            return res.data["business_id"]
+        if res.data and len(res.data) > 0:
+            return res.data[0]["business_id"]
     except Exception as e:
         logger.error(f"Failed to resolve business_id for token: {e}")
     return DEFAULT_BUSINESS_ID
