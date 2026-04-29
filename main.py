@@ -228,7 +228,8 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 def build_telegram_app() -> Application:
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    # Use a placeholder token - real tokens are injected per request
+    token = "0000000000:placeholder-token-for-startup"
     request = HTTPXRequest(
         connect_timeout=30.0,
         read_timeout=30.0,
@@ -710,13 +711,19 @@ async def telegram_webhook(token: str, request: Request):
 
     business_id = channel.data["business_id"]
 
-    # Process the update
-    body = await request.json()
-    update = Update.de_json(body, telegram_app.bot)
-    if update:
-        # Set the business_id for this request
-        telegram_app.bot_data["business_id"] = business_id
-        await telegram_app.update_queue.put(update)
+    # Create a dedicated bot instance for this token
+    # We use a custom request object to match the app's config if needed
+    bot = telegram.Bot(token)
+    async with bot:
+        body = await request.json()
+        update = Update.de_json(body, bot)
+        if update:
+            # Set the business_id for the context of this specific update
+            # Note: We temporarily store it in the app's bot_data for the handlers
+            # to pick up, though in a highly concurrent environment this should 
+            # ideally be handled via a more robust context-local storage.
+            telegram_app.bot_data["business_id"] = business_id
+            await telegram_app.process_update(update)
     return {"ok": True}
 
 
