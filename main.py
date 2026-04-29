@@ -16,6 +16,11 @@ from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi import Depends
+from auth import verify_password, login_required
+
 
 from telegram import Update
 from telegram.ext import (
@@ -280,6 +285,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Store Admin API", lifespan=lifespan)
+app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "change-me-now"))
+
 
 
 @app.get("/debug/catalog")
@@ -314,7 +321,26 @@ templates.env.cache = None
 
 
 
+# ── Authentication ──────────────────────────────────────
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
+
+@app.post("/login")
+async def login(request: Request, password: str = Form(...)):
+    if verify_password(password):
+        request.session["authenticated"] = True
+        return RedirectResponse("/admin", status_code=303)
+    return HTMLResponse("Invalid password", status_code=401)
+
+@app.get("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse("/login", status_code=303)
+
+
 @app.get("/api/products")
+
 async def api_get_products():
     business_id = DEFAULT_BUSINESS_ID  # TODO: get from authenticated user's business
     response = supabase.table("products").select("*").eq("business_id", business_id).order("id").execute()
@@ -326,6 +352,7 @@ async def api_add_product(
     name: str = Form(...),
     description: str = Form(""),   # optional – empty string is fine
     price: float = Form(...),
+    _=Depends(login_required)
 ):
     business_id = DEFAULT_BUSINESS_ID
     response = supabase.table("products").insert({
@@ -367,7 +394,7 @@ async def api_add_product(
 # ── Update product (PATCH/PUT) ────────────────────────────
 @app.patch("/api/products/{product_id}")
 @app.put("/api/products/{product_id}")
-async def api_update_product(product_id: str, request: Request):
+async def api_update_product(product_id: str, request: Request, _=Depends(login_required)):
     business_id = DEFAULT_BUSINESS_ID
     # Handle both JSON and form data (HTMX sends form-encoded)
     if request.headers.get("content-type") == "application/json":
@@ -412,7 +439,7 @@ async def api_update_product(product_id: str, request: Request):
 
 # ── Delete product (DELETE) ──────────────────────────────
 @app.delete("/api/products/{product_id}")
-async def api_delete_product(product_id: str):
+async def api_delete_product(product_id: str, _=Depends(login_required)):
     business_id = DEFAULT_BUSINESS_ID
     resp = supabase.table("products") \
         .delete() \
@@ -431,7 +458,7 @@ async def api_get_orders(status: str = None):
 
 
 @app.patch("/api/orders/{order_id}/status")
-async def api_update_order_status(order_id: int, request: Request):
+async def api_update_order_status(order_id: int, request: Request, _=Depends(login_required)):
     business_id = DEFAULT_BUSINESS_ID
     body = await request.json()
     new_status = body.get("status")
@@ -496,7 +523,7 @@ async def api_stats():
 # ── Web Admin Dashboard Routes ────────────────────────────
 
 @app.get("/admin", response_class=HTMLResponse)
-async def admin_dashboard(request: Request):
+async def admin_dashboard(request: Request, _=Depends(login_required)):
     """Render the full admin dashboard page."""
     template = templates.get_template("admin.html")
     content = template.render({"request": request})
@@ -504,7 +531,7 @@ async def admin_dashboard(request: Request):
 
 
 @app.get("/admin/products", response_class=HTMLResponse)
-async def admin_products_partial(request: Request):
+async def admin_products_partial(request: Request, _=Depends(login_required)):
     """Return only the product table (HTMX partial)."""
     business_id = DEFAULT_BUSINESS_ID  # will be replaced by real auth later
     products = supabase.table("products") \
@@ -519,7 +546,7 @@ async def admin_products_partial(request: Request):
 
 # ── Edit form (GET) ──────────────────────────────────────
 @app.get("/admin/products/{product_id}/edit-form", response_class=HTMLResponse)
-async def product_edit_form(product_id: str):
+async def product_edit_form(product_id: str, _=Depends(login_required)):
     res = supabase.table("products").select("*").eq("id", product_id).single().execute()
     product = res.data
     if not product:
@@ -548,7 +575,7 @@ async def product_edit_form(product_id: str):
 
 # ── Cancel / View row (GET) ─────────────────────────────
 @app.get("/admin/products/{product_id}/view", response_class=HTMLResponse)
-async def product_view_row(product_id: str):
+async def product_view_row(product_id: str, _=Depends(login_required)):
     res = supabase.table("products").select("*").eq("id", product_id).single().execute()
     product = res.data
     if not product:
@@ -576,7 +603,7 @@ async def product_view_row(product_id: str):
 
 
 @app.get("/admin/orders", response_class=HTMLResponse)
-async def admin_orders_partial(request: Request, status: str = None):
+async def admin_orders_partial(request: Request, status: str = None, _=Depends(login_required)):
     business_id = DEFAULT_BUSINESS_ID
     query = supabase.table("orders") \
         .select("*") \
@@ -605,7 +632,7 @@ async def admin_orders_partial(request: Request, status: str = None):
 
 
 @app.get("/admin/products/add-form", response_class=HTMLResponse)
-async def product_add_form():
+async def product_add_form(_=Depends(login_required)):
     return HTMLResponse("""
     <div style="background:var(--surface2); border:1px solid var(--border); padding:20px; border-radius:12px; margin-bottom:24px;">
         <h3 class="syne" style="font-weight:700; margin-bottom:16px; font-size:16px;">Add New Product</h3>
