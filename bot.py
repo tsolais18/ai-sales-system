@@ -23,11 +23,11 @@ def validate_order_items(items: list, business_id: int) -> tuple:
     valid = []
     invalid = []
     for item in items:
-        # Try lookup by ID first (if it looks like a UUID), then by name
+        # Try lookup by ID first, then by name (AI often uses names)
         product_ref = item["product_id"]
         product = None
         
-        # Simple check: UUIDs are usually 36 chars with hyphens
+        # UUID check
         if len(product_ref) == 36 and "-" in product_ref:
             try:
                 product = get_product_by_id(product_ref, business_id)
@@ -38,7 +38,7 @@ def validate_order_items(items: list, business_id: int) -> tuple:
             product = get_product_by_name(product_ref, business_id)
 
         if product and product.get("stock", 0) >= item.get("quantity", 1):
-            # Store the resolved product in the item for Step 2
+            # Pass the resolved product forward to avoid double lookup
             item["_resolved_product"] = product
             valid.append(item)
         else:
@@ -288,17 +288,16 @@ async def save_order(
     total = 0
     for item in valid_items:
         product = item.get("_resolved_product")
-        if not product: # Fallback just in case
-            product = get_product_by_name(item["product_id"], business_id) or get_product_by_id(item["product_id"], business_id)
-        
-        if product:
-            enriched_items.append({
-                "product_id": product["id"],
-                "name": product["name"],
-                "quantity": item.get("quantity", 1),
-                "price": product["price"],
-            })
-            total += product["price"] * item.get("quantity", 1)
+        if not product:
+            product = get_product_by_id(item["product_id"], business_id)
+
+        enriched_items.append({
+            "product_id": product["id"],
+            "name": product["name"],
+            "quantity": item.get("quantity", 1),
+            "price": product["price"],
+        })
+        total += product["price"] * item.get("quantity", 1)
 
     # Step 3 – Create the order
     order = create_order(
@@ -309,13 +308,9 @@ async def save_order(
         location=location,
         business_id=business_id,
     )
-    
-    if order:
-        logger.info(f"Order created: {order['id']} for business {business_id}, total ₦{total:,}")
 
     if order and bot:
         short_id = order['id'][:8]
-        # Notify admins
         items_text = "\n".join([f"  • {i['name']} x{i['quantity']} — ₦{i['price']:,}" for i in enriched_items])
         admin_msg_clean = (
             f"🛎 *New Order #{short_id}!*\n\n"
@@ -324,12 +319,10 @@ async def save_order(
             f"{items_text}\n\n"
             f"💰 Total: ₦{total:,}"
         )
-        
         keyboard = InlineKeyboardMarkup(
             [[InlineKeyboardButton("✅ Confirm", callback_data=f"confirm:{order['id']}")],
              [InlineKeyboardButton("❌ Cancel", callback_data=f"cancel:{order['id']}")]]
         )
-
         for admin_id in ADMIN_IDS:
             try:
                 await bot.send_message(
