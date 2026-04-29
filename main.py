@@ -12,7 +12,7 @@ def escape_markdown(text: str) -> str:
 
 import telegram
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi import FastAPI, Request, Form, HTTPException, Header
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -369,7 +369,7 @@ async def api_get_products():
 @app.post("/api/products")
 async def api_add_product(
     name: str = Form(...),
-    description: str = Form(""),   # optional – empty string is fine
+    description: str = Form(""),
     price: float = Form(...),
     _=Depends(login_required)
 ):
@@ -384,7 +384,6 @@ async def api_add_product(
     if response.data:
         product = response.data[0]
         stock_badge = f'<span class="badge badge-in-stock">In Stock ({product["stock"]})</span>'
-        # Return an HTML <tr> so HTMX can insert it into #product-list
         return HTMLResponse(f"""
         <tr id="product-{product['id']}">
             <td><span class="product-name">{product['name']}</span></td>
@@ -413,47 +412,67 @@ async def api_add_product(
 # ── Update product (PATCH/PUT) ────────────────────────────
 @app.patch("/api/products/{product_id}")
 @app.put("/api/products/{product_id}")
-async def api_update_product(product_id: str, request: Request, _=Depends(login_required)):
+async def api_update_product(product_id: str, request: Request, hx_target: str = Header(None), _=Depends(login_required)):
     business_id = DEFAULT_BUSINESS_ID
-    # Handle both JSON and form data (HTMX sends form-encoded)
     if request.headers.get("content-type") == "application/json":
         body = await request.json()
     else:
         form = await request.form()
         body = {k: v for k, v in form.items()}
-        if "price" in body:
-            body["price"] = float(body["price"])
-        if "stock" in body:
-            body["stock"] = int(body["stock"])
+        if "price" in body: body["price"] = float(body["price"])
+        if "stock" in body: body["stock"] = int(body["stock"])
 
     res = supabase.table("products").update(body).eq("id", product_id).eq("business_id", business_id).execute()
-    if res.data:
-        product = res.data[0]
-        stock_badge = f'<span class="badge badge-in-stock">In Stock ({product["stock"]})</span>' if product['stock'] > 0 else '<span class="badge badge-out">Out of Stock</span>'
-        # Return the updated row as an HTML partial (matches _products.html style)
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Product not found")
+    
+    product = res.data[0]
+    stock_badge = f'<span class="badge badge-in-stock">In Stock ({product["stock"]})</span>' if product['stock'] > 0 else '<span class="badge badge-out">Out of Stock</span>'
+    
+    # If target is mobile card
+    if hx_target and hx_target.startswith("m-product-"):
         return HTMLResponse(f"""
-        <tr id="product-{product['id']}">
-            <td><span class="product-name">{product['name']}</span></td>
-            <td><span class="amount">₦{product['price']:.2f}</span></td>
-            <td>{stock_badge}</td>
-            <td>
-                <div class="actions-cell">
-                    <button class="action-btn action-edit"
-                        hx-get="/admin/products/{product['id']}/edit-form"
-                        hx-target="#product-{product['id']}" hx-swap="outerHTML">
-                        Edit
-                    </button>
-                    <button class="action-btn action-delete"
-                        hx-delete="/api/products/{product['id']}"
-                        hx-confirm="Delete this product?"
-                        hx-target="#product-{product['id']}" hx-swap="outerHTML">
-                        Delete
-                    </button>
-                </div>
-            </td>
-        </tr>
+        <div class="m-card" id="m-product-{product['id']}">
+            <div class="m-card-top">
+                <span class="product-name" style="font-size:15px;">{product['name']}</span>
+                {stock_badge}
+            </div>
+            <div>
+                <span class="m-card-label">Price</span>
+                <div class="amount" style="margin-top:2px;">₦{product['price']:.2f}</div>
+            </div>
+            <div class="m-card-actions">
+                <button class="action-btn action-edit"
+                    hx-get="/admin/products/{product['id']}/edit-form"
+                    hx-target="#m-product-{product['id']}"
+                    hx-swap="outerHTML">✎ Edit</button>
+                <button class="action-btn action-delete"
+                    hx-delete="/api/products/{product['id']}"
+                    hx-confirm="Delete this product?"
+                    hx-target="#m-product-{product['id']}"
+                    hx-swap="outerHTML">Delete</button>
+            </div>
+        </div>
         """)
-    raise HTTPException(status_code=404, detail="Product not found")
+
+    return HTMLResponse(f"""
+    <tr id="product-{product['id']}">
+        <td><span class="product-name">{product['name']}</span></td>
+        <td><span class="amount">₦{product['price']:.2f}</span></td>
+        <td>{stock_badge}</td>
+        <td>
+            <div class="actions-cell">
+                <button class="action-btn action-edit"
+                    hx-get="/admin/products/{product['id']}/edit-form"
+                    hx-target="#product-{product['id']}" hx-swap="outerHTML">Edit</button>
+                <button class="action-btn action-delete"
+                    hx-delete="/api/products/{product['id']}"
+                    hx-confirm="Delete this product?"
+                    hx-target="#product-{product['id']}" hx-swap="outerHTML">Delete</button>
+            </div>
+        </td>
+    </tr>
+    """)
 
 
 # ── Delete product (DELETE) ──────────────────────────────
@@ -477,38 +496,63 @@ async def api_get_orders(status: str = None):
 
 
 @app.patch("/api/orders/{order_id}/status")
-async def api_update_order_status(order_id: int, request: Request, _=Depends(login_required)):
+async def api_update_order_status(order_id: int, request: Request, hx_target: str = Header(None), _=Depends(login_required)):
     business_id = DEFAULT_BUSINESS_ID
     body = await request.json()
     new_status = body.get("status")
     if new_status not in ("pending", "confirmed", "cancelled"):
         raise HTTPException(status_code=400, detail="Invalid status")
+    
     result = update_order_status(order_id, business_id, new_status)
-    if result:
-        order = result[0]
-        # Handle string items if necessary
-        if isinstance(order.get("items"), str):
-            order["items"] = json.loads(order["items"])
-            
-        items_html = "".join([f'<div>{i["name"]} <span style="color:var(--muted)">× {i["quantity"]}</span></div>' for i in order['items']])
-        # Determine badge class
-        badge_class = "badge-pending" if order['status'] == 'pending' else ("badge-confirmed" if order['status'] == 'confirmed' else "badge-cancelled")
+    if not result:
+        raise HTTPException(status_code=404, detail="Order not found")
         
+    order = result[0]
+    if isinstance(order.get("items"), str):
+        order["items"] = json.loads(order["items"])
+        
+    items_html = "".join([f'<div>{i["name"]} <span style="color:var(--muted)">× {i["quantity"]}</span></div>' for i in order['items']])
+    badge_class = f"badge-{order['status']}"
+    
+    # If target is mobile card
+    if hx_target and hx_target.startswith("m-order-"):
         return HTMLResponse(f"""
-        <tr id="order-{order['id']}">
-            <td><span class="order-id">#{order['id']}</span></td>
-            <td><span class="customer-name">{order['customer_name']}</span></td>
-            <td><div class="item-list">{items_html}</div></td>
-            <td><span class="amount">₦{order['total']:.2f}</span></td>
-            <td><span class="badge {badge_class}">{order['status'].capitalize()}</span></td>
-            <td>
-                <div class="actions-cell">
-                    <span style="color:var(--border);font-size:18px">—</span>
+        <div class="m-card" id="m-order-{order['id']}">
+            <div class="m-card-top">
+                <div class="order-id">#{order['id']}</div>
+                <span class="badge {badge_class}">{order['status'].capitalize()}</span>
+            </div>
+            <div class="m-card-meta">
+                <div class="m-card-field">
+                    <span class="m-card-label">Customer</span>
+                    <span class="m-card-val customer-name">{order['customer_name']}</span>
                 </div>
-            </td>
-        </tr>
+                <div class="m-card-field">
+                    <span class="m-card-label">Total</span>
+                    <span class="m-card-val amount">₦{order['total']:.2f}</span>
+                </div>
+            </div>
+            <div class="item-list">{items_html}</div>
+            <div class="m-card-actions">
+                <span style="color: #b5b4c0; font-size: 12px; font-style: italic;">Done</span>
+            </div>
+        </div>
         """)
-    raise HTTPException(status_code=404, detail="Order not found")
+
+    return HTMLResponse(f"""
+    <tr id="order-{order['id']}">
+        <td><span class="order-id">#{order['id']}</span></td>
+        <td><span class="customer-name">{order['customer_name']}</span></td>
+        <td><div class="item-list">{items_html}</div></td>
+        <td><span class="amount">₦{order['total']:.2f}</span></td>
+        <td><span class="badge {badge_class}">{order['status'].capitalize()}</span></td>
+        <td>
+            <div class="actions-cell">
+                <span style="color: #b5b4c0; font-size: 12px; font-style: italic;">Done</span>
+            </div>
+        </td>
+    </tr>
+    """)
 
 
 @app.get("/api/stats")
@@ -565,19 +609,54 @@ async def admin_products_partial(request: Request, _=Depends(login_required)):
 
 # ── Edit form (GET) ──────────────────────────────────────
 @app.get("/admin/products/{product_id}/edit-form", response_class=HTMLResponse)
-async def product_edit_form(product_id: str, _=Depends(login_required)):
+async def product_edit_form(product_id: str, hx_target: str = Header(None), _=Depends(login_required)):
     res = supabase.table("products").select("*").eq("id", product_id).single().execute()
     product = res.data
     if not product:
         return HTMLResponse("Product not found", status_code=404)
+    
+    # If target is mobile card
+    if hx_target and hx_target.startswith("m-product-"):
+        return HTMLResponse(f"""
+        <div class="m-card" id="m-product-{product['id']}" style="background:var(--surface2); border:1.5px solid var(--accent2);">
+            <div style="display:flex; flex-direction:column; gap:12px;">
+                <div class="m-card-field">
+                    <label class="m-card-label">Name</label>
+                    <input type="text" name="name" value="{product['name']}" 
+                           style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:8px 12px; border-radius:8px; width:100%; font-size:14px;">
+                </div>
+                <div style="display:flex; gap:12px;">
+                    <div class="m-card-field" style="flex:1;">
+                        <label class="m-card-label">Price (₦)</label>
+                        <input type="number" name="price" step="0.01" value="{product['price']}" 
+                               style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:8px 12px; border-radius:8px; width:100%; font-size:14px;">
+                    </div>
+                    <div class="m-card-field" style="flex:1;">
+                        <label class="m-card-label">Stock</label>
+                        <input type="number" name="stock" value="{product['stock']}" 
+                               style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:8px 12px; border-radius:8px; width:100%; font-size:14px;">
+                    </div>
+                </div>
+                <div class="m-card-actions">
+                    <button class="action-btn action-confirm" style="flex:1;"
+                            hx-put="/api/products/{product['id']}" hx-include="closest .m-card"
+                            hx-target="#m-product-{product['id']}" hx-swap="outerHTML">Save</button>
+                    <button class="action-btn action-delete" style="flex:1;"
+                            hx-get="/admin/products/{product['id']}/view"
+                            hx-target="#m-product-{product['id']}" hx-swap="outerHTML">Cancel</button>
+                </div>
+            </div>
+        </div>
+        """)
+
     return HTMLResponse(f"""
-    <tr id="product-{product['id']}">
+    <tr id="product-{product['id']}" style="background:var(--surface2);">
         <td><input type="text" name="name" value="{product['name']}" 
-            style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:6px; width:100%; font-size:13px;"></td>
+            style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:8px; width:100%; font-size:13px;"></td>
         <td><input type="number" name="price" step="0.01" value="{product['price']}" 
-            style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:6px; width:90px; font-size:13px;"></td>
+            style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:8px; width:100px; font-size:13px;"></td>
         <td><input type="number" name="stock" value="{product['stock']}" 
-            style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:6px; width:70px; font-size:13px;"></td>
+            style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:6px 10px; border-radius:8px; width:70px; font-size:13px;"></td>
         <td>
             <div class="actions-cell">
                 <button class="action-btn action-confirm"
@@ -594,12 +673,40 @@ async def product_edit_form(product_id: str, _=Depends(login_required)):
 
 # ── Cancel / View row (GET) ─────────────────────────────
 @app.get("/admin/products/{product_id}/view", response_class=HTMLResponse)
-async def product_view_row(product_id: str, _=Depends(login_required)):
+async def product_view_row(product_id: str, hx_target: str = Header(None), _=Depends(login_required)):
     res = supabase.table("products").select("*").eq("id", product_id).single().execute()
     product = res.data
     if not product:
         return HTMLResponse("", status_code=404)
+    
     stock_badge = f'<span class="badge badge-in-stock">In Stock ({product["stock"]})</span>' if product['stock'] > 0 else '<span class="badge badge-out">Out of Stock</span>'
+    
+    # If target is mobile card
+    if hx_target and hx_target.startswith("m-product-"):
+        return HTMLResponse(f"""
+        <div class="m-card" id="m-product-{product['id']}">
+            <div class="m-card-top">
+                <span class="product-name" style="font-size:15px;">{product['name']}</span>
+                {stock_badge}
+            </div>
+            <div>
+                <span class="m-card-label">Price</span>
+                <div class="amount" style="margin-top:2px;">₦{product['price']:.2f}</div>
+            </div>
+            <div class="m-card-actions">
+                <button class="action-btn action-edit"
+                    hx-get="/admin/products/{product['id']}/edit-form"
+                    hx-target="#m-product-{product['id']}"
+                    hx-swap="outerHTML">✎ Edit</button>
+                <button class="action-btn action-delete"
+                    hx-delete="/api/products/{product['id']}"
+                    hx-confirm="Delete this product?"
+                    hx-target="#m-product-{product['id']}"
+                    hx-swap="outerHTML">Delete</button>
+            </div>
+        </div>
+        """)
+
     return HTMLResponse(f"""
     <tr id="product-{product['id']}">
         <td><span class="product-name">{product['name']}</span></td>
