@@ -1,4 +1,5 @@
 import os
+import json
 import asyncio
 import logging
 import re
@@ -394,6 +395,10 @@ async def api_update_order_status(order_id: int, request: Request):
     result = update_order_status(order_id, business_id, new_status)
     if result:
         order = result[0]
+        # Handle string items if necessary
+        if isinstance(order.get("items"), str):
+            order["items"] = json.loads(order["items"])
+            
         items_html = "".join([f'<div>{i["name"]} <span style="color:var(--muted)">× {i["quantity"]}</span></div>' for i in order['items']])
         # Determine badge class
         badge_class = "badge-pending" if order['status'] == 'pending' else ("badge-confirmed" if order['status'] == 'confirmed' else "badge-cancelled")
@@ -527,7 +532,6 @@ async def product_view_row(product_id: str):
 
 @app.get("/admin/orders", response_class=HTMLResponse)
 async def admin_orders_partial(request: Request, status: str = None):
-    """Return only the orders table (HTMX partial)."""
     business_id = DEFAULT_BUSINESS_ID
     query = supabase.table("orders") \
         .select("*") \
@@ -535,10 +539,21 @@ async def admin_orders_partial(request: Request, status: str = None):
         .order("created_at", desc=True)
     if status:
         query = query.eq("status", status)
-    orders = query.execute()
-    template = templates.get_template("_orders.html")
-    content = template.render({"request": request, "orders": orders.data or []})
-    return HTMLResponse(content)
+
+    orders_response = query.execute()
+
+    # Convert the Supabase response to a list of plain dicts
+    raw_orders = orders_response.data or []
+
+    # Ensure items is a list of dicts (not a string)
+    for order in raw_orders:
+        if isinstance(order.get("items"), str):
+            order["items"] = json.loads(order["items"])
+
+    return templates.TemplateResponse("_orders.html", {
+        "request": request,
+        "orders": raw_orders
+    })
 
 
 # Override the old /api/products GET to return JSON (unchanged) –
