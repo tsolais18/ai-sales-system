@@ -231,6 +231,22 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Store Admin API", lifespan=lifespan)
 
+
+@app.get("/debug/catalog")
+async def debug_catalog():
+    business_id = DEFAULT_BUSINESS_ID
+    products = supabase.table("products") \
+        .select("*") \
+        .eq("business_id", business_id) \
+        .gt("stock", 0) \
+        .execute()
+    return {
+        "business_id": business_id,
+        "count": len(products.data or []),
+        "products": products.data
+    }
+
+
 # Static files with safety check
 if os.path.isdir("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
