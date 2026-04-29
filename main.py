@@ -399,6 +399,29 @@ async def admin_orders_partial(request: Request, status: str = None):
 # The existing /api/products can remain as the pure JSON API.
 
 
+@app.get("/admin/products/add-form", response_class=HTMLResponse)
+async def product_add_form():
+    return HTMLResponse("""
+    <form hx-post="/api/products" hx-target="#product-list" hx-swap="beforeend"
+          class="p-4 bg-white border border-gray-200 rounded-xl shadow-sm max-w-lg">
+        <h3 class="text-lg font-semibold mb-4">New Product</h3>
+        <div class="space-y-3">
+            <input type="text" name="name" placeholder="Product name" required
+                   class="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none">
+            <textarea name="description" placeholder="Description" required rows="2"
+                      class="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"></textarea>
+            <input type="number" name="price" step="0.01" placeholder="Price (₦)" required
+                   class="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none">
+        </div>
+        <div class="mt-4 flex gap-3">
+            <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">Save Product</button>
+            <button type="button" class="text-gray-500 hover:text-gray-700 text-sm"
+                    hx-get="/admin/products" hx-target="#product-list">Cancel</button>
+        </div>
+    </form>
+    """)
+
+
 # ── Entry Point ───────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
