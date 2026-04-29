@@ -532,30 +532,26 @@ async def product_view_row(product_id: str):
 
 @app.get("/admin/orders", response_class=HTMLResponse)
 async def admin_orders_partial(request: Request, status: str = None):
-    try:
-        business_id = DEFAULT_BUSINESS_ID
-        query = supabase.table("orders") \
-            .select("*") \
-            .eq("business_id", business_id) \
-            .order("created_at", desc=True)
-        if status:
-            query = query.eq("status", status)
+    business_id = DEFAULT_BUSINESS_ID
+    query = supabase.table("orders") \
+        .select("*") \
+        .eq("business_id", business_id) \
+        .order("created_at", desc=True)
+    if status:
+        query = query.eq("status", status)
 
-        orders_response = query.execute()
-        raw_orders = orders_response.data or []
+    orders_response = query.execute()
+    raw_orders = orders_response.data or []
 
-        # Convert items from JSON string to list if needed
-        for order in raw_orders:
-            if isinstance(order.get("items"), str):
-                order["items"] = json.loads(order["items"])
+    # Parse JSON string items if necessary
+    for order in raw_orders:
+        if isinstance(order.get("items"), str):
+            order["items"] = json.loads(order["items"])
 
-        return templates.TemplateResponse("_orders.html", {
-            "request": request,
-            "orders": raw_orders
-        })
-    except Exception as e:
-        logger.error(f"Orders page crash: {e}", exc_info=True)
-        return HTMLResponse("<p>Something went wrong loading orders. Check logs.</p>", status_code=500)
+    # Manual rendering to bypass the TemplateResponse bug
+    template = templates.get_template("_orders.html")
+    content = template.render({"request": request, "orders": raw_orders})
+    return HTMLResponse(content)
 
 
 # Override the old /api/products GET to return JSON (unchanged) –
