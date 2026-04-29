@@ -324,7 +324,9 @@ templates.env.cache = None
 # ── Authentication ──────────────────────────────────────
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
+    template = templates.get_template("login.html")
+    content = template.render({"request": request})
+    return HTMLResponse(content)
 
 @app.post("/login")
 async def login(request: Request, password: str = Form(...)):
