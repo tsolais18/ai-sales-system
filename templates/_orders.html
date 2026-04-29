@@ -4,20 +4,16 @@
 
 <!-- Filter Bar -->
 <div class="filter-bar">
-    <button class="pill active" 
-        hx-get="/admin/orders" hx-target="#main-content">
+    <button class="pill active" hx-get="/admin/orders" hx-target="#main-content">
         All
     </button>
-    <button class="pill pill-warn" 
-        hx-get="/admin/orders?status=pending" hx-target="#main-content">
+    <button class="pill pill-warn" hx-get="/admin/orders?status=pending" hx-target="#main-content">
         Pending
     </button>
-    <button class="pill pill-success" 
-        hx-get="/admin/orders?status=confirmed" hx-target="#main-content">
+    <button class="pill pill-success" hx-get="/admin/orders?status=confirmed" hx-target="#main-content">
         Confirmed
     </button>
-    <button class="pill pill-danger" 
-        hx-get="/admin/orders?status=cancelled" hx-target="#main-content">
+    <button class="pill pill-danger" hx-get="/admin/orders?status=cancelled" hx-target="#main-content">
         Cancelled
     </button>
 </div>
@@ -63,14 +59,12 @@
                     <td>
                         <div class="actions-cell">
                             {% if order.status == 'pending' %}
-                            <button class="action-btn action-confirm"
-                                hx-patch="/api/orders/{{ order.id }}/status" hx-vals='{"status": "confirmed"}'
-                                hx-target="#order-{{ order.id }}" hx-swap="outerHTML">
+                            <button class="action-btn action-confirm" hx-patch="/api/orders/{{ order.id }}/status"
+                                hx-vals='{"status": "confirmed"}' hx-target="#order-{{ order.id }}" hx-swap="outerHTML">
                                 Confirm
                             </button>
-                            <button class="action-btn action-cancel"
-                                hx-patch="/api/orders/{{ order.id }}/status" hx-vals='{"status": "cancelled"}'
-                                hx-target="#order-{{ order.id }}" hx-swap="outerHTML">
+                            <button class="action-btn action-cancel" hx-patch="/api/orders/{{ order.id }}/status"
+                                hx-vals='{"status": "cancelled"}' hx-target="#order-{{ order.id }}" hx-swap="outerHTML">
                                 Cancel
                             </button>
                             {% else %}
