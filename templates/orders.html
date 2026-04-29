@@ -1,0 +1,90 @@
+<div class="p-6">
+    <h2 class="text-2xl font-bold text-gray-800 mb-6">Orders</h2>
+
+    <!-- Filters -->
+    <div class="flex flex-wrap gap-2 mb-6">
+        <button
+            class="px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+            hx-get="/admin/orders" hx-target="#main-content" hx-swap="innerHTML">
+            All Orders
+        </button>
+        <button
+            class="px-4 py-2 rounded-lg text-sm font-medium bg-yellow-100 text-yellow-700 hover:bg-yellow-200 transition-colors"
+            hx-get="/admin/orders?status=pending" hx-target="#main-content" hx-swap="innerHTML">
+            Pending
+        </button>
+        <button
+            class="px-4 py-2 rounded-lg text-sm font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
+            hx-get="/admin/orders?status=confirmed" hx-target="#main-content" hx-swap="innerHTML">
+            Confirmed
+        </button>
+        <button
+            class="px-4 py-2 rounded-lg text-sm font-medium bg-red-100 text-red-700 hover:bg-red-200 transition-colors"
+            hx-get="/admin/orders?status=cancelled" hx-target="#main-content" hx-swap="innerHTML">
+            Cancelled
+        </button>
+    </div>
+
+    <!-- Table -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <table class="w-full">
+            <thead class="bg-gray-50 text-gray-600 text-sm">
+                <tr>
+                    <th class="px-6 py-4 text-left font-medium">Order ID</th>
+                    <th class="px-6 py-4 text-left font-medium">Customer</th>
+                    <th class="px-6 py-4 text-left font-medium">Items</th>
+                    <th class="px-6 py-4 text-left font-medium">Total</th>
+                    <th class="px-6 py-4 text-left font-medium">Status</th>
+                    <th class="px-6 py-4 text-left font-medium">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="order-list" class="divide-y divide-gray-100 text-sm">
+                {% for order in orders %}
+                <tr id="order-{{ order.id }}" class="hover:bg-gray-50 transition-colors">
+                    <td class="px-6 py-4 font-mono text-purple-700">#{{ order.id }}</td>
+                    <td class="px-6 py-4 font-medium text-gray-900">{{ order.customer_name }}</td>
+                    <td class="px-6 py-4 text-gray-600">
+                        {% for item in order.items %}
+                        <div class="mb-1">{{ item.name }} × {{ item.quantity }}</div>
+                        {% endfor %}
+                    </td>
+                    <td class="px-6 py-4 font-semibold text-gray-800">₦{{ "%.2f"|format(order.total) }}</td>
+                    <td class="px-6 py-4">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                            {% if order.status == 'pending' %}bg-yellow-100 text-yellow-800
+                            {% elif order.status == 'confirmed' %}bg-green-100 text-green-800
+                            {% else %}bg-red-100 text-red-800{% endif %}">
+                            {{ order.status | capitalize }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="flex items-center gap-2">
+                            {% if order.status == 'pending' %}
+                            <button class="text-green-600 hover:text-green-800 text-sm font-medium"
+                                hx-patch="/api/orders/{{ order.id }}/status" hx-vals='{"status": "confirmed"}'
+                                hx-target="#order-{{ order.id }}" hx-swap="outerHTML">
+                                Confirm
+                            </button>
+                            <button class="text-red-500 hover:text-red-700 text-sm font-medium"
+                                hx-patch="/api/orders/{{ order.id }}/status" hx-vals='{"status": "cancelled"}'
+                                hx-target="#order-{{ order.id }}" hx-swap="outerHTML">
+                                Cancel
+                            </button>
+                            {% else %}
+                            <span class="text-gray-400 text-sm">—</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not orders %}
+                <tr>
+                    <td colspan="6" class="px-6 py-8 text-center text-gray-400">
+                        No orders found.
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>

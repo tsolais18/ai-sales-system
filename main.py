@@ -259,9 +259,7 @@ templates = Jinja2Templates(directory="templates")
 # ── Web Admin Routes ──────────────────────────────────────
 # Note: API routes currently use DEFAULT_BUSINESS_ID until proper auth is added.
 
-@app.get("/admin", response_class=HTMLResponse)
-async def admin_dashboard(request: Request):
-    return templates.TemplateResponse("admin.html", {"request": request})
+
 
 
 @app.get("/api/products")
@@ -354,6 +352,51 @@ async def api_stats():
         "month_revenue": sum(o["total"] for o in month_orders if o["status"] == "confirmed"),
         "total_revenue": sum(o["total"] for o in confirmed),
     }
+
+
+# ── Web Admin Dashboard Routes ────────────────────────────
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_dashboard(request: Request):
+    """Render the full admin dashboard page."""
+    return templates.TemplateResponse("admin.html", {"request": request})
+
+
+@app.get("/admin/products", response_class=HTMLResponse)
+async def admin_products_partial(request: Request):
+    """Return only the product table (HTMX partial)."""
+    business_id = DEFAULT_BUSINESS_ID  # will be replaced by real auth later
+    products = supabase.table("products") \
+        .select("*") \
+        .eq("business_id", business_id) \
+        .order("id") \
+        .execute()
+    return templates.TemplateResponse("_products.html", {
+        "request": request,
+        "products": products.data or []
+    })
+
+
+@app.get("/admin/orders", response_class=HTMLResponse)
+async def admin_orders_partial(request: Request, status: str = None):
+    """Return only the orders table (HTMX partial)."""
+    business_id = DEFAULT_BUSINESS_ID
+    query = supabase.table("orders") \
+        .select("*") \
+        .eq("business_id", business_id) \
+        .order("created_at", desc=True)
+    if status:
+        query = query.eq("status", status)
+    orders = query.execute()
+    return templates.TemplateResponse("_orders.html", {
+        "request": request,
+        "orders": orders.data or []
+    })
+
+
+# Override the old /api/products GET to return JSON (unchanged) –
+# but for HTMX we'll use the /admin/products route above.
+# The existing /api/products can remain as the pure JSON API.
 
 
 # ── Entry Point ───────────────────────────────────────────
