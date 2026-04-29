@@ -294,17 +294,47 @@ async def api_add_product(
     raise HTTPException(status_code=500, detail="Failed to add product")
 
 
+# ── Update product (PATCH/PUT) ────────────────────────────
 @app.patch("/api/products/{product_id}")
-
+@app.put("/api/products/{product_id}")
 async def api_update_product(product_id: str, request: Request):
     business_id = DEFAULT_BUSINESS_ID
-    body = await request.json()
-    response = supabase.table("products").update(body).eq("id", product_id).eq("business_id", business_id).execute()
-    if response.data:
-        return response.data[0]
+    # Handle both JSON and form data (HTMX sends form-encoded)
+    if request.headers.get("content-type") == "application/json":
+        body = await request.json()
+    else:
+        form = await request.form()
+        body = {k: v for k, v in form.items()}
+        if "price" in body:
+            body["price"] = float(body["price"])
+        if "stock" in body:
+            body["stock"] = int(body["stock"])
+
+    res = supabase.table("products").update(body).eq("id", product_id).eq("business_id", business_id).execute()
+    if res.data:
+        product = res.data[0]
+        stock_display = f'<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">In Stock ({product["stock"]})</span>' if product['stock'] > 0 else '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Out of Stock</span>'
+        # Return the updated row as an HTML partial (HTMX will swap)
+        return HTMLResponse(f"""
+        <tr id="product-{product['id']}">
+            <td class="px-6 py-4 font-medium text-gray-900">{product['name']}</td>
+            <td class="px-6 py-4 text-gray-700">₦{product['price']:.2f}</td>
+            <td class="px-6 py-4">{stock_display}</td>
+            <td class="px-6 py-4 flex items-center gap-3">
+                <button class="text-purple-600 hover:text-purple-800 text-sm font-medium"
+                        hx-get="/admin/products/{product['id']}/edit-form"
+                        hx-target="#product-{product['id']}" hx-swap="outerHTML">Edit</button>
+                <button class="text-gray-400 hover:text-red-600 text-sm font-medium"
+                        hx-delete="/api/products/{product['id']}"
+                        hx-confirm="Delete this product?"
+                        hx-target="#product-{product['id']}" hx-swap="outerHTML">Delete</button>
+            </td>
+        </tr>
+        """)
     raise HTTPException(status_code=404, detail="Product not found")
 
 
+# ── Delete product (DELETE) ──────────────────────────────
 @app.delete("/api/products/{product_id}")
 async def api_delete_product(product_id: str):
     business_id = DEFAULT_BUSINESS_ID
@@ -314,7 +344,7 @@ async def api_delete_product(product_id: str):
         .eq("business_id", business_id) \
         .execute()
     if resp.data:
-        return Response(status_code=200)   # Empty 200 OK tells HTMX to remove the element
+        return Response(status_code=200)   # empty 200 tells HTMX to remove the element
     raise HTTPException(status_code=404, detail="Product not found")
 
 
@@ -389,7 +419,7 @@ async def admin_products_partial(request: Request):
     return HTMLResponse(content)
 
 
-# Inline edit form for a product
+# ── Edit form (GET) ──────────────────────────────────────
 @app.get("/admin/products/{product_id}/edit-form", response_class=HTMLResponse)
 async def product_edit_form(product_id: str):
     res = supabase.table("products").select("*").eq("id", product_id).single().execute()
@@ -413,7 +443,7 @@ async def product_edit_form(product_id: str):
     """)
 
 
-# View (cancel edit) - restores the read-only row
+# ── Cancel / View row (GET) ─────────────────────────────
 @app.get("/admin/products/{product_id}/view", response_class=HTMLResponse)
 async def product_view_row(product_id: str):
     res = supabase.table("products").select("*").eq("id", product_id).single().execute()
