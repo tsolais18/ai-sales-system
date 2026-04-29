@@ -4,10 +4,11 @@ import logging
 logger = logging.getLogger(__name__)
 from datetime import datetime, timezone
 from groq import AsyncGroq
-from catalog import get_all_products, get_product_by_id
+from catalog import get_all_products, get_product_by_id, get_product_by_name
 from orders import create_order
 from supabase_client import supabase
 from dotenv import load_dotenv
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 
 load_dotenv()
 
@@ -22,13 +23,28 @@ def validate_order_items(items: list, business_id: int) -> tuple:
     valid = []
     invalid = []
     for item in items:
-        product = get_product_by_id(item["product_id"], business_id)
+        # Try lookup by ID first (if it looks like a UUID), then by name
+        product_ref = item["product_id"]
+        product = None
+        
+        # Simple check: UUIDs are usually 36 chars with hyphens
+        if len(product_ref) == 36 and "-" in product_ref:
+            try:
+                product = get_product_by_id(product_ref, business_id)
+            except Exception:
+                pass
+        
+        if not product:
+            product = get_product_by_name(product_ref, business_id)
+
         if product and product.get("stock", 0) >= item.get("quantity", 1):
+            # Store the resolved product in the item for Step 2
+            item["_resolved_product"] = product
             valid.append(item)
         else:
             invalid.append(item)
             logger.warning(
-                f"Invalid order item – product_id={item.get('product_id')} "
+                f"Invalid order item – ref={product_ref} "
                 f"exists={bool(product)} stock={product.get('stock', 'N/A') if product else 'N/A'}"
             )
     return valid, invalid
@@ -49,6 +65,12 @@ Example: ##ORDER## Amaka Obi | 3:1,5:2 | 14 Rumuola Road, Port Harcourt
 
 NEVER skip steps. NEVER assume the address. ALWAYS ask explicitly.
 NEVER output ##ORDER## without both name AND address.
+After outputting ##ORDER## once, do NOT output it again. 
+Never show ##ORDER## to the customer.
+
+Also ensure the order format uses product names instead of IDs:
+##ORDER## customer_name | product_name:quantity,... | address
+Example: ##ORDER## Amaka Obi | Atomic Habits:1,Shoe Dog:2 | 14 Rumuola Road, Port Harcourt
 
 Payment: GTBank — Store Account, Acct: 0123456789. Customer sends receipt here.
 Delivery: 1-3 days locally, 3-5 days elsewhere.
@@ -265,14 +287,18 @@ async def save_order(
     enriched_items = []
     total = 0
     for item in valid_items:
-        product = get_product_by_id(item["product_id"], business_id)
-        enriched_items.append({
-            "product_id": product["id"],
-            "name": product["name"],
-            "quantity": item.get("quantity", 1),
-            "price": product["price"],
-        })
-        total += product["price"] * item.get("quantity", 1)
+        product = item.get("_resolved_product")
+        if not product: # Fallback just in case
+            product = get_product_by_name(item["product_id"], business_id) or get_product_by_id(item["product_id"], business_id)
+        
+        if product:
+            enriched_items.append({
+                "product_id": product["id"],
+                "name": product["name"],
+                "quantity": item.get("quantity", 1),
+                "price": product["price"],
+            })
+            total += product["price"] * item.get("quantity", 1)
 
     # Step 3 – Create the order
     order = create_order(
@@ -288,20 +314,30 @@ async def save_order(
         logger.info(f"Order created: {order['id']} for business {business_id}, total ₦{total:,}")
 
     if order and bot:
-        # Notify admins (this part stays the same as before)
+        short_id = order['id'][:8]
+        # Notify admins
         items_text = "\n".join([f"  • {i['name']} x{i['quantity']} — ₦{i['price']:,}" for i in enriched_items])
-        admin_msg = (
-            f"🛎 *New Order #{order['id']}!*\n\n"
+        admin_msg_clean = (
+            f"🛎 *New Order #{short_id}!*\n\n"
             f"👤 *{customer_name}*\n"
-            f"📱 TG: `{user_id}`\n"
             f"📍 *{location}*\n\n"
             f"{items_text}\n\n"
-            f"💰 Total: ₦{total:,}\n\n"
-            f"Use `/confirm {order['id']}` to confirm after payment."
+            f"💰 Total: ₦{total:,}"
         )
+        
+        keyboard = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("✅ Confirm", callback_data=f"confirm:{order['id']}")],
+             [InlineKeyboardButton("❌ Cancel", callback_data=f"cancel:{order['id']}")]]
+        )
+
         for admin_id in ADMIN_IDS:
             try:
-                await bot.send_message(chat_id=admin_id, text=admin_msg, parse_mode="Markdown")
+                await bot.send_message(
+                    chat_id=admin_id,
+                    text=admin_msg_clean,
+                    reply_markup=keyboard,
+                    parse_mode="Markdown"
+                )
             except Exception:
                 pass
 

@@ -24,6 +24,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
     ContextTypes,
+    CallbackQueryHandler,
 )
 from telegram.request import HTTPXRequest
 
@@ -166,6 +167,49 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ Sorry, a network issue occurred. Please try again.")
 
 
+async def handle_order_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data  # "confirm:<order_id>" or "cancel:<order_id>"
+    action, order_id = data.split(":", 1)
+    business_id = context.bot_data.get("business_id", DEFAULT_BUSINESS_ID)
+
+    if action == "confirm":
+        new_status = "confirmed"
+    elif action == "cancel":
+        new_status = "cancelled"
+    else:
+        return
+
+    from orders import update_order_status
+    result = update_order_status(order_id, business_id, new_status)
+
+    if result:
+        order = result[0]
+        try:
+            # Notify the customer
+            await context.bot.send_message(
+                chat_id=int(order["telegram_id"]),
+                text=f"📢 Your order #{order['id'][:8]} has been {new_status}. Thank you!"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to notify customer {order['telegram_id']}: {e}")
+        
+        # Update the admin message to show the final status
+        current_text = query.message.text
+        status_emoji = "✅" if new_status == "confirmed" else "🚫"
+        # Append status if not already there
+        if f"Status: {new_status.capitalize()}" not in current_text:
+            await query.edit_message_text(
+                text=f"{current_text}\n\n{status_emoji} *Status: {new_status.capitalize()}*",
+                parse_mode="Markdown"
+            )
+    else:
+        await query.edit_message_text(
+            text=f"{query.message.text}\n\n⚠️ Failed to update order status."
+        )
+
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     if isinstance(context.error, telegram.error.NetworkError):
         logger.warning(f"⚠️ Network issue – will retry on next update: {context.error}")
@@ -195,6 +239,7 @@ def build_telegram_app() -> Application:
     app.add_handler(CommandHandler("cart", cart))
     app.add_handler(CommandHandler("add", add))
     app.add_handler(CommandHandler("orders", orders_cmd))
+    app.add_handler(CallbackQueryHandler(handle_order_callback, pattern="^(confirm|cancel):"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
     register_admin_handlers(app)

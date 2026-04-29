@@ -32,6 +32,17 @@ def get_product_by_id(product_id: str, business_id: int):
     )
     return response.data
 
+def get_product_by_name(name: str, business_id: int):
+    response = (
+        supabase.table("products")
+        .select("*")
+        .eq("name", name)
+        .eq("business_id", business_id)
+        .limit(1)
+        .execute()
+    )
+    return response.data[0] if response.data else None
+
 def format_product(product: dict) -> str:
     in_stock = product.get("stock", 0) > 0
     return (
