@@ -47,7 +47,7 @@
                     </td>
                     <td>
                         <div class="item-list">
-                            {% for item in order.items %}
+                            {% for item in order['items'] %}
                             <div>{{ item.name }} × {{ item.quantity }}</div>
                             {% endfor %}
                         </div>
