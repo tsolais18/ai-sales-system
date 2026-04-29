@@ -12,7 +12,7 @@ def escape_markdown(text: str) -> str:
 import telegram
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -278,7 +278,7 @@ async def api_get_products():
 @app.post("/api/products")
 async def api_add_product(
     name: str = Form(...),
-    description: str = Form(...),
+    description: str = Form(""),   # optional – empty string is fine
     price: float = Form(...),
 ):
     business_id = DEFAULT_BUSINESS_ID
@@ -290,7 +290,31 @@ async def api_add_product(
         "business_id": business_id,
     }).execute()
     if response.data:
-        return JSONResponse(status_code=201, content=response.data[0])
+        product = response.data[0]
+        stock_badge = f'<span class="badge badge-in-stock">In Stock ({product["stock"]})</span>'
+        # Return an HTML <tr> so HTMX can insert it into #product-list
+        return HTMLResponse(f"""
+        <tr id="product-{product['id']}">
+            <td><span class="product-name">{product['name']}</span></td>
+            <td><span class="amount">₦{product['price']:.2f}</span></td>
+            <td>{stock_badge}</td>
+            <td>
+                <div class="actions-cell">
+                    <button class="action-btn action-edit"
+                        hx-get="/admin/products/{product['id']}/edit-form"
+                        hx-target="#product-{product['id']}" hx-swap="outerHTML">
+                        Edit
+                    </button>
+                    <button class="action-btn action-delete"
+                        hx-delete="/api/products/{product['id']}"
+                        hx-confirm="Delete this product?"
+                        hx-target="#product-{product['id']}" hx-swap="outerHTML">
+                        Delete
+                    </button>
+                </div>
+            </td>
+        </tr>
+        """, status_code=201)
     raise HTTPException(status_code=500, detail="Failed to add product")
 
 
@@ -313,21 +337,27 @@ async def api_update_product(product_id: str, request: Request):
     res = supabase.table("products").update(body).eq("id", product_id).eq("business_id", business_id).execute()
     if res.data:
         product = res.data[0]
-        stock_display = f'<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">In Stock ({product["stock"]})</span>' if product['stock'] > 0 else '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Out of Stock</span>'
-        # Return the updated row as an HTML partial (HTMX will swap)
+        stock_badge = f'<span class="badge badge-in-stock">In Stock ({product["stock"]})</span>' if product['stock'] > 0 else '<span class="badge badge-out">Out of Stock</span>'
+        # Return the updated row as an HTML partial (matches _products.html style)
         return HTMLResponse(f"""
         <tr id="product-{product['id']}">
-            <td class="px-6 py-4 font-medium text-gray-900">{product['name']}</td>
-            <td class="px-6 py-4 text-gray-700">₦{product['price']:.2f}</td>
-            <td class="px-6 py-4">{stock_display}</td>
-            <td class="px-6 py-4 flex items-center gap-3">
-                <button class="text-purple-600 hover:text-purple-800 text-sm font-medium"
+            <td><span class="product-name">{product['name']}</span></td>
+            <td><span class="amount">₦{product['price']:.2f}</span></td>
+            <td>{stock_badge}</td>
+            <td>
+                <div class="actions-cell">
+                    <button class="action-btn action-edit"
                         hx-get="/admin/products/{product['id']}/edit-form"
-                        hx-target="#product-{product['id']}" hx-swap="outerHTML">Edit</button>
-                <button class="text-gray-400 hover:text-red-600 text-sm font-medium"
+                        hx-target="#product-{product['id']}" hx-swap="outerHTML">
+                        Edit
+                    </button>
+                    <button class="action-btn action-delete"
                         hx-delete="/api/products/{product['id']}"
                         hx-confirm="Delete this product?"
-                        hx-target="#product-{product['id']}" hx-swap="outerHTML">Delete</button>
+                        hx-target="#product-{product['id']}" hx-swap="outerHTML">
+                        Delete
+                    </button>
+                </div>
             </td>
         </tr>
         """)
@@ -363,7 +393,25 @@ async def api_update_order_status(order_id: int, request: Request):
         raise HTTPException(status_code=400, detail="Invalid status")
     result = update_order_status(order_id, business_id, new_status)
     if result:
-        return result[0]
+        order = result[0]
+        items_html = "".join([f'<div>{i["name"]} <span style="color:var(--muted)">× {i["quantity"]}</span></div>' for i in order['items']])
+        # Determine badge class
+        badge_class = "badge-pending" if order['status'] == 'pending' else ("badge-confirmed" if order['status'] == 'confirmed' else "badge-cancelled")
+        
+        return HTMLResponse(f"""
+        <tr id="order-{order['id']}">
+            <td><span class="order-id">#{order['id']}</span></td>
+            <td><span class="customer-name">{order['customer_name']}</span></td>
+            <td><div class="item-list">{items_html}</div></td>
+            <td><span class="amount">₦{order['total']:.2f}</span></td>
+            <td><span class="badge {badge_class}">{order['status'].capitalize()}</span></td>
+            <td>
+                <div class="actions-cell">
+                    <span style="color:var(--border);font-size:18px">—</span>
+                </div>
+            </td>
+        </tr>
+        """)
     raise HTTPException(status_code=404, detail="Order not found")
 
 
@@ -428,16 +476,21 @@ async def product_edit_form(product_id: str):
         return HTMLResponse("Product not found", status_code=404)
     return HTMLResponse(f"""
     <tr id="product-{product['id']}">
-        <td class="px-6 py-4"><input type="text" name="name" value="{product['name']}" class="border rounded px-2 py-1 w-full text-sm"></td>
-        <td class="px-6 py-4"><input type="number" name="price" step="0.01" value="{product['price']}" class="border rounded px-2 py-1 w-24 text-sm"></td>
-        <td class="px-6 py-4"><input type="number" name="stock" value="{product['stock']}" class="border rounded px-2 py-1 w-20 text-sm"></td>
-        <td class="px-6 py-4 flex items-center gap-2">
-            <button class="text-green-600 hover:text-green-800 text-sm font-medium"
-                    hx-put="/api/products/{product['id']}" hx-include="closest tr"
-                    hx-target="#product-{product['id']}" hx-swap="outerHTML">Save</button>
-            <button class="text-gray-500 hover:text-gray-700 text-sm font-medium"
-                    hx-get="/admin/products/{product['id']}/view"
-                    hx-target="#product-{product['id']}" hx-swap="outerHTML">Cancel</button>
+        <td><input type="text" name="name" value="{product['name']}" 
+            style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:6px; width:100%; font-size:13px;"></td>
+        <td><input type="number" name="price" step="0.01" value="{product['price']}" 
+            style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:6px; width:90px; font-size:13px;"></td>
+        <td><input type="number" name="stock" value="{product['stock']}" 
+            style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:4px 8px; border-radius:6px; width:70px; font-size:13px;"></td>
+        <td>
+            <div class="actions-cell">
+                <button class="action-btn action-confirm"
+                        hx-put="/api/products/{product['id']}" hx-include="closest tr"
+                        hx-target="#product-{product['id']}" hx-swap="outerHTML">Save</button>
+                <button class="action-btn action-delete"
+                        hx-get="/admin/products/{product['id']}/view"
+                        hx-target="#product-{product['id']}" hx-swap="outerHTML">Cancel</button>
+            </div>
         </td>
     </tr>
     """)
@@ -450,20 +503,22 @@ async def product_view_row(product_id: str):
     product = res.data
     if not product:
         return HTMLResponse("", status_code=404)
-    stock_display = f'<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">In Stock ({product["stock"]})</span>' if product['stock'] > 0 else '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Out of Stock</span>'
+    stock_badge = f'<span class="badge badge-in-stock">In Stock ({product["stock"]})</span>' if product['stock'] > 0 else '<span class="badge badge-out">Out of Stock</span>'
     return HTMLResponse(f"""
     <tr id="product-{product['id']}">
-        <td class="px-6 py-4 font-medium text-gray-900">{product['name']}</td>
-        <td class="px-6 py-4 text-gray-700">₦{product['price']:.2f}</td>
-        <td class="px-6 py-4">{stock_display}</td>
-        <td class="px-6 py-4 flex items-center gap-3">
-            <button class="text-purple-600 hover:text-purple-800 text-sm font-medium"
-                    hx-get="/admin/products/{product['id']}/edit-form"
-                    hx-target="#product-{product['id']}" hx-swap="outerHTML">Edit</button>
-            <button class="text-gray-400 hover:text-red-600 text-sm font-medium"
-                    hx-delete="/api/products/{product['id']}"
-                    hx-confirm="Delete this product?"
-                    hx-target="#product-{product['id']}" hx-swap="outerHTML">Delete</button>
+        <td><span class="product-name">{product['name']}</span></td>
+        <td><span class="amount">₦{product['price']:.2f}</span></td>
+        <td>{stock_badge}</td>
+        <td>
+            <div class="actions-cell">
+                <button class="action-btn action-edit"
+                        hx-get="/admin/products/{product['id']}/edit-form"
+                        hx-target="#product-{product['id']}" hx-swap="outerHTML">Edit</button>
+                <button class="action-btn action-delete"
+                        hx-delete="/api/products/{product['id']}"
+                        hx-confirm="Delete this product?"
+                        hx-target="#product-{product['id']}" hx-swap="outerHTML">Delete</button>
+            </div>
         </td>
     </tr>
     """)
@@ -494,23 +549,32 @@ async def admin_orders_partial(request: Request, status: str = None):
 @app.get("/admin/products/add-form", response_class=HTMLResponse)
 async def product_add_form():
     return HTMLResponse("""
-    <form hx-post="/api/products" hx-target="#product-list" hx-swap="beforeend"
-          class="p-4 bg-white border border-gray-200 rounded-xl shadow-sm max-w-lg">
-        <h3 class="text-lg font-semibold mb-4">New Product</h3>
-        <div class="space-y-3">
-            <input type="text" name="name" placeholder="Product name" required
-                   class="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none">
-            <textarea name="description" placeholder="Description" required rows="2"
-                      class="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"></textarea>
-            <input type="number" name="price" step="0.01" placeholder="Price (₦)" required
-                   class="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none">
-        </div>
-        <div class="mt-4 flex gap-3">
-            <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors">Save Product</button>
-            <button type="button" class="text-gray-500 hover:text-gray-700 text-sm"
-                    hx-get="/admin/products" hx-target="#product-list">Cancel</button>
-        </div>
-    </form>
+    <div style="background:var(--surface2); border:1px solid var(--border); padding:20px; border-radius:12px; margin-bottom:24px;">
+        <h3 class="syne" style="font-weight:700; margin-bottom:16px; font-size:16px;">Add New Product</h3>
+        <form hx-post="/api/products" hx-target="#product-list" hx-swap="afterbegin" hx-on::after-request="this.reset()">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:16px;">
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                    <label style="font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase;">Name</label>
+                    <input type="text" name="name" placeholder="e.g. Shoe Dog" 
+                        style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:8px 12px; border-radius:8px; font-size:13px;" required>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                    <label style="font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase;">Description</label>
+                    <input type="text" name="description" placeholder="Short description..." 
+                        style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:8px 12px; border-radius:8px; font-size:13px;">
+                </div>
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                    <label style="font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase;">Price (₦)</label>
+                    <input type="number" name="price" step="0.01" placeholder="0.00" 
+                        style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:8px 12px; border-radius:8px; font-size:13px;" required>
+                </div>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <button type="submit" class="btn btn-primary">Create Product</button>
+                <button type="button" class="btn btn-ghost" onclick="this.closest('div').parentElement.parentElement.remove()">Cancel</button>
+            </div>
+        </form>
+    </div>
     """)
 
 

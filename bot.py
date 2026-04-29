@@ -214,6 +214,9 @@ async def handle_customer_message(user_id: str, user_message: str, session: dict
         clean_reply = "\n".join(
             l for l in reply.split("\n") if not l.strip().startswith("##ORDER##")
         ).strip()
+        # Prevent sending an empty message to Telegram
+        if not clean_reply:
+            clean_reply = "✅ Your order has been placed! We'll send you an update once it's confirmed."
         return clean_reply
 
     return reply
@@ -222,7 +225,7 @@ async def handle_customer_message(user_id: str, user_message: str, session: dict
 async def save_order(
     user_id: str, customer_name: str, items: list, bot=None, location: str = "Not provided", business_id: int = 1
 ):
-    logger.info(f"save_order called: user={user_id}, items={items}, business_id={business_id}")
+    logger.info(f"save_order called: items={items}, business_id={business_id}")
     enriched_items = []
     total = 0
     for item in items:
@@ -239,7 +242,7 @@ async def save_order(
             logger.warning(f"Product ID {item['product_id']} not found for business {business_id}")
 
     if not enriched_items:
-        logger.error(f"No valid products in order from user {user_id}")
+        logger.warning("No valid products found in order – order not created")
         return None
 
     order = create_order(

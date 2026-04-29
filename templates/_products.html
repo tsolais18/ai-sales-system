@@ -1,63 +1,68 @@
-<div class="p-6">
-    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-        <h2 class="text-2xl font-bold text-gray-800">Products</h2>
-        <button
-            class="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium shadow-sm transition-colors"
+<div class="section-header">
+    <h2 class="section-title">Products</h2>
+    <button class="btn btn-primary"
             hx-get="/admin/products/add-form" hx-target="#add-product-form" hx-swap="innerHTML">
-            + Add Product
-        </button>
-    </div>
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+        </svg>
+        Add Product
+    </button>
+</div>
 
-    <!-- Add Form Container -->
-    <div id="add-product-form" class="mb-6"></div>
+<!-- Add Form Container -->
+<div id="add-product-form"></div>
 
-    <!-- Table -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <table class="w-full">
-            <thead class="bg-gray-50 text-gray-600 text-sm">
+<!-- Table Card -->
+<div class="table-card">
+    <div class="table-scroll">
+        <table>
+            <thead>
                 <tr>
-                    <th class="px-6 py-4 text-left font-medium">Name</th>
-                    <th class="px-6 py-4 text-left font-medium">Price</th>
-                    <th class="px-6 py-4 text-left font-medium">Stock</th>
-                    <th class="px-6 py-4 text-left font-medium">Actions</th>
+                    <th>Name</th>
+                    <th>Price</th>
+                    <th>Stock Status</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
-            <tbody id="product-list" class="divide-y divide-gray-100 text-sm">
+            <tbody id="product-list">
                 {% for product in products %}
-                <tr id="product-{{ product.id }}" class="hover:bg-gray-50 transition-colors">
-                    <td class="px-6 py-4 font-medium text-gray-900">{{ product.name }}</td>
-                    <td class="px-6 py-4 text-gray-700">₦{{ "%.2f"|format(product.price) }}</td>
-                    <td class="px-6 py-4">
+                <tr id="product-{{ product.id }}">
+                    <td>
+                        <div class="product-name">{{ product.name }}</div>
+                    </td>
+                    <td>
+                        <div class="amount">₦{{ "%.2f"|format(product.price) }}</div>
+                    </td>
+                    <td>
                         {% if product.stock > 0 %}
-                        <span
-                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            In Stock ({{ product.stock }})
-                        </span>
+                        <span class="badge badge-in-stock">In Stock ({{ product.stock }})</span>
                         {% else %}
-                        <span
-                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                            Out of Stock
-                        </span>
+                        <span class="badge badge-out">Out of Stock</span>
                         {% endif %}
                     </td>
-                    <td class="px-6 py-4 flex items-center gap-3">
-                        <button class="text-purple-600 hover:text-purple-800 text-sm font-medium"
-                            hx-get="/admin/products/{{ product.id }}/edit-form" hx-target="#product-{{ product.id }}"
-                            hx-swap="outerHTML">
-                            Edit
-                        </button>
-                        <button class="text-gray-400 hover:text-red-600 text-sm font-medium"
-                            hx-delete="/api/products/{{ product.id }}" hx-confirm="Delete this product?"
-                            hx-target="#product-{{ product.id }}" hx-swap="outerHTML">
-                            Delete
-                        </button>
+                    <td>
+                        <div class="actions-cell">
+                            <button class="action-btn action-edit"
+                                hx-get="/admin/products/{{ product.id }}/edit-form" hx-target="#product-{{ product.id }}"
+                                hx-swap="outerHTML">
+                                Edit
+                            </button>
+                            <button class="action-btn action-delete"
+                                hx-delete="/api/products/{{ product.id }}" hx-confirm="Delete this product?"
+                                hx-target="#product-{{ product.id }}" hx-swap="outerHTML">
+                                Delete
+                            </button>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
                 {% if not products %}
                 <tr>
-                    <td colspan="4" class="px-6 py-8 text-center text-gray-400">
-                        No products yet. Add your first book!
+                    <td colspan="4">
+                        <div class="empty-state">
+                            <div class="empty-icon">📚</div>
+                            <p>No products yet. Add your first item!</p>
+                        </div>
                     </td>
                 </tr>
                 {% endif %}
