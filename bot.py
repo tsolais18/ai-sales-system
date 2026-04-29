@@ -14,6 +14,24 @@ load_dotenv()
 groq_client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
 
 ADMIN_IDS = [5851987998]
+
+def validate_order_items(items: list, business_id: int) -> tuple:
+    """
+    Returns (valid_items, invalid_items) after checking product existence and stock.
+    """
+    valid = []
+    invalid = []
+    for item in items:
+        product = get_product_by_id(item["product_id"], business_id)
+        if product and product.get("stock", 0) >= item.get("quantity", 1):
+            valid.append(item)
+        else:
+            invalid.append(item)
+            logger.warning(
+                f"Invalid order item – product_id={item.get('product_id')} "
+                f"exists={bool(product)} stock={product.get('stock', 'N/A') if product else 'N/A'}"
+            )
+    return valid, invalid
 sessions = {}
 
 CUSTOMER_PROMPT = """
@@ -223,28 +241,40 @@ async def handle_customer_message(user_id: str, user_message: str, session: dict
 
 
 async def save_order(
-    user_id: str, customer_name: str, items: list, bot=None, location: str = "Not provided", business_id: int = 1
+    user_id: str, customer_name: str, items: list, bot=None,
+    location: str = "Not provided", business_id: int = 1
 ):
-    logger.info(f"save_order called: items={items}, business_id={business_id}")
-    enriched_items = []
-    total = 0
-    for item in items:
-        product = get_product_by_id(item["product_id"], business_id)
-        if product:
-            enriched_items.append({
-                "product_id": product["id"],
-                "name": product["name"],
-                "quantity": item["quantity"],
-                "price": product["price"],
-            })
-            total += product["price"] * item["quantity"]
-        else:
-            logger.warning(f"Product ID {item['product_id']} not found for business {business_id}")
+    # Step 1 – Validate every item
+    valid_items, invalid_items = validate_order_items(items, business_id)
+    if invalid_items:
+        logger.info(f"Ignored {len(invalid_items)} hallucinated items from user {user_id}")
 
-    if not enriched_items:
-        logger.warning("No valid products found in order – order not created")
+    if not valid_items:
+        logger.error(f"No valid products in order from user {user_id} – order discarded")
+        if bot:
+            try:
+                await bot.send_message(
+                    chat_id=int(user_id),
+                    text="❌ Sorry, some items in your order are no longer available. Please check the catalog and try again."
+                )
+            except Exception:
+                pass
         return None
 
+    # Step 2 – Enrich items with product details
+    enriched_items = []
+    total = 0
+    for item in valid_items:
+        product = get_product_by_id(item["product_id"], business_id)
+        enriched_items.append({
+            "product_id": product["id"],
+            "name": product["name"],
+            "quantity": item.get("quantity", 1),
+            "price": product["price"],
+        })
+        total += product["price"] * item.get("quantity", 1)
+
+    # Step 3 – Create the order
     order = create_order(
         customer_name=customer_name,
         telegram_id=user_id,
@@ -253,9 +283,12 @@ async def save_order(
         location=location,
         business_id=business_id,
     )
-    logger.info(f"Order created: {order}")
+    
+    if order:
+        logger.info(f"Order created: {order['id']} for business {business_id}, total ₦{total:,}")
 
     if order and bot:
+        # Notify admins (this part stays the same as before)
         items_text = "\n".join([f"  • {i['name']} x{i['quantity']} — ₦{i['price']:,}" for i in enriched_items])
         admin_msg = (
             f"🛎 *New Order #{order['id']}!*\n\n"
@@ -268,9 +301,10 @@ async def save_order(
         )
         for admin_id in ADMIN_IDS:
             try:
-                await bot.send_message(chat_id=admin_id, text=admin_msg)
+                await bot.send_message(chat_id=admin_id, text=admin_msg, parse_mode="Markdown")
             except Exception:
                 pass
+
     return order
 
 
