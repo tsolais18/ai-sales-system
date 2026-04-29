@@ -227,16 +227,23 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
         logger.error(f"Unhandled error: {context.error}", exc_info=context.error)
 
 
-def build_telegram_app() -> Application:
-    # Use a placeholder token - real tokens are injected per request
-    token = "0000000000:placeholder-token-for-startup"
+async def build_telegram_app() -> Application:
+    # Fetch any active Telegram token (just for initialization)
+    res = supabase.table("channels") \
+        .select("identifier") \
+        .eq("channel_type", "telegram") \
+        .eq("is_active", True) \
+        .limit(1) \
+        .execute()
+    
+    token = res.data[0]["identifier"] if res.data and len(res.data) > 0 else os.getenv("FALLBACK_BOT_TOKEN", "none")
+
     request = HTTPXRequest(
         connect_timeout=30.0,
         read_timeout=30.0,
         write_timeout=30.0,
         pool_timeout=30.0,
     )
-
     app = Application.builder().token(token).request(request).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -260,23 +267,23 @@ def build_telegram_app() -> Application:
 async def lifespan(app: FastAPI):
     global telegram_app
     try:
-        telegram_app = build_telegram_app()
+        telegram_app = await build_telegram_app()
         await telegram_app.initialize()
         await telegram_app.start()
 
         # Register webhooks for all active Telegram channels
+        base_url = os.getenv("RAILWAY_PUBLIC_URL", "https://your-app.up.railway.app")
         channels = supabase.table("channels") \
             .select("*") \
             .eq("channel_type", "telegram") \
             .eq("is_active", True) \
             .execute()
 
-        base_url = os.getenv("RAILWAY_PUBLIC_URL", "https://your-app.up.railway.app")
         for ch in channels.data or []:
-            token = ch["identifier"]
+            tok = ch["identifier"]
             try:
-                bot = telegram.Bot(token)
-                await bot.set_webhook(f"{base_url}/webhook/{token}")
+                bot = telegram.Bot(tok)
+                await bot.set_webhook(f"{base_url}/webhook/{tok}")
                 logger.info(f"Webhook set for channel {ch['id']} (business {ch['business_id']})")
             except Exception as e:
                 logger.error(f"Failed to set webhook for channel {ch['id']}: {e}")
