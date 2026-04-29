@@ -1,4 +1,7 @@
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 from datetime import datetime, timezone
 from groq import AsyncGroq
 from catalog import get_all_products, get_product_by_id
@@ -219,6 +222,7 @@ async def handle_customer_message(user_id: str, user_message: str, session: dict
 async def save_order(
     user_id: str, customer_name: str, items: list, bot=None, location: str = "Not provided", business_id: int = 1
 ):
+    logger.info(f"save_order called: user={user_id}, items={items}, business_id={business_id}")
     enriched_items = []
     total = 0
     for item in items:
@@ -231,8 +235,11 @@ async def save_order(
                 "price": product["price"],
             })
             total += product["price"] * item["quantity"]
+        else:
+            logger.warning(f"Product ID {item['product_id']} not found for business {business_id}")
 
     if not enriched_items:
+        logger.error(f"No valid products in order from user {user_id}")
         return None
 
     order = create_order(
@@ -243,6 +250,7 @@ async def save_order(
         location=location,
         business_id=business_id,
     )
+    logger.info(f"Order created: {order}")
 
     if order and bot:
         items_text = "\n".join([f"  • {i['name']} x{i['quantity']} — ₦{i['price']:,}" for i in enriched_items])
