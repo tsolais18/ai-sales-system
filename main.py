@@ -254,6 +254,7 @@ else:
     logger.warning("⚠️ 'static' directory not found — skipping static file mount.")
 
 templates = Jinja2Templates(directory="templates")
+templates.env.cache = None
 
 
 # ── Web Admin Routes ──────────────────────────────────────
