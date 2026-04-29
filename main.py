@@ -532,28 +532,30 @@ async def product_view_row(product_id: str):
 
 @app.get("/admin/orders", response_class=HTMLResponse)
 async def admin_orders_partial(request: Request, status: str = None):
-    business_id = DEFAULT_BUSINESS_ID
-    query = supabase.table("orders") \
-        .select("*") \
-        .eq("business_id", business_id) \
-        .order("created_at", desc=True)
-    if status:
-        query = query.eq("status", status)
+    try:
+        business_id = DEFAULT_BUSINESS_ID
+        query = supabase.table("orders") \
+            .select("*") \
+            .eq("business_id", business_id) \
+            .order("created_at", desc=True)
+        if status:
+            query = query.eq("status", status)
 
-    orders_response = query.execute()
+        orders_response = query.execute()
+        raw_orders = orders_response.data or []
 
-    # Convert the Supabase response to a list of plain dicts
-    raw_orders = orders_response.data or []
+        # Convert items from JSON string to list if needed
+        for order in raw_orders:
+            if isinstance(order.get("items"), str):
+                order["items"] = json.loads(order["items"])
 
-    # Ensure items is a list of dicts (not a string)
-    for order in raw_orders:
-        if isinstance(order.get("items"), str):
-            order["items"] = json.loads(order["items"])
-
-    return templates.TemplateResponse("_orders.html", {
-        "request": request,
-        "orders": raw_orders
-    })
+        return templates.TemplateResponse("_orders.html", {
+            "request": request,
+            "orders": raw_orders
+        })
+    except Exception as e:
+        logger.error(f"Orders page crash: {e}", exc_info=True)
+        return HTMLResponse("<p>Something went wrong loading orders. Check logs.</p>", status_code=500)
 
 
 # Override the old /api/products GET to return JSON (unchanged) –
