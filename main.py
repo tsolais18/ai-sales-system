@@ -1,7 +1,13 @@
 import os
 import asyncio
 import logging
+import re
 from contextlib import asynccontextmanager
+
+def escape_markdown(text: str) -> str:
+    """Escape characters that Telegram's MarkdownV2 parser interprets."""
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
 
 import telegram
 from dotenv import load_dotenv
@@ -69,8 +75,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /search <name> — Find a product\n"
         "• /cart — View your cart\n"
         "• /orders — Your order history\n\n"
-        "Or just chat with me naturally — I got you! 😊",
-        parse_mode="Markdown"
+        "Or just chat with me naturally — I got you! 😊"
     )
 
 
@@ -82,8 +87,7 @@ async def catalog(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     text = format_catalog(products)
     await update.message.reply_text(
-        f"🛍 *Our Catalog*\n\n{text}\n\nTo order, just tell me the product name or ID!",
-        parse_mode="Markdown"
+        f"🛍 *Our Catalog*\n\n{text}\n\nTo order, just tell me the product name or ID!"
     )
 
 
@@ -95,16 +99,16 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     products = search_products(query, business_id)
     if not products:
-        await update.message.reply_text(f"😔 No results for *{query}*.", parse_mode="Markdown")
+        await update.message.reply_text(f"😔 No results for *{query}*.")
         return
     text = format_catalog(products)
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text(text)
 
 
 async def cart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     text = view_cart(user_id)
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text(text)
 
 
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -115,13 +119,13 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /add <product_id> [quantity]\nExample: /add 3 2")
         return
     try:
-        product_id = int(args[0])
+        product_id = args[0]
         quantity = int(args[1]) if len(args) > 1 else 1
     except ValueError:
-        await update.message.reply_text("❌ Invalid format. Use: /add <product_id> [quantity]")
+        await update.message.reply_text("❌ Invalid quantity. Use: /add <product_id> [quantity]")
         return
     reply = await add_to_cart(user_id, product_id, quantity, business_id)
-    await update.message.reply_text(reply, parse_mode="Markdown")
+    await update.message.reply_text(reply)
 
 
 async def orders_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -133,7 +137,7 @@ async def orders_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📭 You have no orders yet.")
         return
     text = "\n\n".join([format_order_summary(o) for o in user_orders[:5]])
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text(text)
 
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -150,7 +154,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for attempt in range(3):
         try:
-            await update.message.reply_text(reply, parse_mode="Markdown")
+            await update.message.reply_text(reply)
             break
         except telegram.error.NetworkError as e:
             logger.warning(f"Network error on reply attempt {attempt+1}/3: {e}")
@@ -263,6 +267,7 @@ templates.env.cache = None
 
 
 
+
 @app.get("/api/products")
 async def api_get_products():
     business_id = DEFAULT_BUSINESS_ID  # TODO: get from authenticated user's business
@@ -290,7 +295,8 @@ async def api_add_product(
 
 
 @app.patch("/api/products/{product_id}")
-async def api_update_product(product_id: int, request: Request):
+
+async def api_update_product(product_id: str, request: Request):
     business_id = DEFAULT_BUSINESS_ID
     body = await request.json()
     response = supabase.table("products").update(body).eq("id", product_id).eq("business_id", business_id).execute()
@@ -300,7 +306,7 @@ async def api_update_product(product_id: int, request: Request):
 
 
 @app.delete("/api/products/{product_id}")
-async def api_delete_product(product_id: int):
+async def api_delete_product(product_id: str):
     business_id = DEFAULT_BUSINESS_ID
     resp = supabase.table("products") \
         .delete() \
@@ -385,7 +391,7 @@ async def admin_products_partial(request: Request):
 
 # Inline edit form for a product
 @app.get("/admin/products/{product_id}/edit-form", response_class=HTMLResponse)
-async def product_edit_form(product_id: int):
+async def product_edit_form(product_id: str):
     res = supabase.table("products").select("*").eq("id", product_id).single().execute()
     product = res.data
     if not product:
@@ -409,7 +415,7 @@ async def product_edit_form(product_id: int):
 
 # View (cancel edit) - restores the read-only row
 @app.get("/admin/products/{product_id}/view", response_class=HTMLResponse)
-async def product_view_row(product_id: int):
+async def product_view_row(product_id: str):
     res = supabase.table("products").select("*").eq("id", product_id).single().execute()
     product = res.data
     if not product:

@@ -21,7 +21,7 @@ def search_products(query: str, business_id: int):
     )
     return response.data or []
 
-def get_product_by_id(product_id: int, business_id: int):
+def get_product_by_id(product_id: str, business_id: int):
     response = (
         supabase.table("products")
         .select("*")

@@ -126,7 +126,7 @@ def parse_order_signal(reply: str):
                 items = []
                 for item_str in parts[1].strip().split(","):
                     product_id, quantity = item_str.strip().split(":")
-                    items.append({"product_id": int(product_id), "quantity": int(quantity)})
+                    items.append({"product_id": product_id.strip(), "quantity": int(quantity)})
                 location = parts[2] if len(parts) > 2 else None
                 return customer_name, items, location
             except Exception:
@@ -265,13 +265,13 @@ async def save_order(
         )
         for admin_id in ADMIN_IDS:
             try:
-                await bot.send_message(chat_id=admin_id, text=admin_msg, parse_mode="Markdown")
+                await bot.send_message(chat_id=admin_id, text=admin_msg)
             except Exception:
                 pass
     return order
 
 
-async def add_to_cart(user_id: str, product_id: int, quantity: int = 1, business_id: int = 1) -> str:
+async def add_to_cart(user_id: str, product_id: str, quantity: int = 1, business_id: int = 1) -> str:
     session = get_session(user_id)
     product = get_product_by_id(product_id, business_id)
     if not product:
