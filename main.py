@@ -263,21 +263,30 @@ async def lifespan(app: FastAPI):
         await telegram_app.initialize()
         await telegram_app.start()
 
-        # Resolve business_id and store in bot_data
-        bid = await get_business_id_for_telegram(TELEGRAM_BOT_TOKEN)
-        telegram_app.bot_data["business_id"] = bid
-        logger.info(f"🤖 Telegram bot started for business_id={bid}")
+        # Register webhooks for all active Telegram channels
+        channels = supabase.table("channels") \
+            .select("*") \
+            .eq("channel_type", "telegram") \
+            .eq("is_active", True) \
+            .execute()
 
-        await telegram_app.bot.delete_webhook(drop_pending_updates=True)
-        await telegram_app.updater.start_polling()
+        base_url = os.getenv("RAILWAY_PUBLIC_URL", "https://your-app.up.railway.app")
+        for ch in channels.data or []:
+            token = ch["identifier"]
+            try:
+                bot = telegram.Bot(token)
+                await bot.set_webhook(f"{base_url}/webhook/{token}")
+                logger.info(f"Webhook set for channel {ch['id']} (business {ch['business_id']})")
+            except Exception as e:
+                logger.error(f"Failed to set webhook for channel {ch['id']}: {e}")
+
+        logger.info("🤖 Telegram bots running in webhook mode")
     except Exception as e:
         logger.error(f"❌ Failed to start Telegram bot: {e}")
 
     yield
 
     if telegram_app:
-        if telegram_app.updater.running:
-            await telegram_app.updater.stop()
         if telegram_app.running:
             await telegram_app.stop()
         await telegram_app.shutdown()
@@ -681,6 +690,71 @@ async def debug_orders_raw():
         .order("created_at", desc=True) \
         .execute()
     return {"count": len(res.data or []), "data": res.data}
+
+
+# ── Webhook & Channel Management ─────────────────────────
+
+@app.post("/webhook/{token}")
+async def telegram_webhook(token: str, request: Request):
+    """Receive updates for a specific bot token."""
+    # Verify the token belongs to an active channel
+    channel = supabase.table("channels") \
+        .select("business_id") \
+        .eq("channel_type", "telegram") \
+        .eq("identifier", token) \
+        .eq("is_active", True) \
+        .single() \
+        .execute()
+    if not channel.data:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    business_id = channel.data["business_id"]
+
+    # Process the update
+    body = await request.json()
+    update = Update.de_json(body, telegram_app.bot)
+    if update:
+        # Set the business_id for this request
+        telegram_app.bot_data["business_id"] = business_id
+        await telegram_app.update_queue.put(update)
+    return {"ok": True}
+
+
+@app.post("/admin/channels/add")
+async def add_channel(request: Request, token: str = Form(...), business_name: str = Form("New Business"), _=Depends(login_required)):
+    """Add a new Telegram channel and create a business if needed."""
+    # Create a new business
+    slug = business_name.lower().replace(" ", "-")
+    business = supabase.table("businesses").insert({
+        "name": business_name,
+        "slug": slug,
+    }).execute()
+    business_id = business.data[0]["id"]
+
+    # Insert the channel
+    supabase.table("channels").insert({
+        "business_id": business_id,
+        "channel_type": "telegram",
+        "identifier": token,
+        "is_active": True,
+    }).execute()
+
+    # Register the webhook
+    base_url = os.getenv("RAILWAY_PUBLIC_URL", "https://your-app.up.railway.app")
+    try:
+        bot = telegram.Bot(token)
+        await bot.set_webhook(f"{base_url}/webhook/{token}")
+        message = f"✅ Channel connected! New business ID: {business_id}"
+    except Exception as e:
+        message = f"⚠️ Business created, but webhook failed: {e}"
+
+    return HTMLResponse(f"<p class='text-green-400'>{message}</p>")
+
+
+@app.get("/admin/connect-form", response_class=HTMLResponse)
+async def connect_form(request: Request, _=Depends(login_required)):
+    template = templates.get_template("_connect.html")
+    return HTMLResponse(template.render({"request": request}))
 
 
 # ── Entry Point ───────────────────────────────────────────

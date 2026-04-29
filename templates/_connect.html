@@ -1,0 +1,23 @@
+<div class="p-6">
+    <div class="section-header">
+        <h2 class="section-title">Connect a New Business</h2>
+    </div>
+    <div class="table-card p-6" style="max-width: 500px;">
+        <form hx-post="/admin/channels/add" hx-target="#result" hx-indicator="#spinner" class="flex flex-col gap-4">
+            <div class="flex flex-col gap-1">
+                <label class="text-[11px] uppercase font-bold text-muted tracking-wider">Business Name</label>
+                <input type="text" name="business_name" placeholder="e.g. Cupa Books" required
+                       class="w-full bg-bg border border-border text-text rounded-lg px-4 py-2.5 focus:outline-none focus:ring-1 focus:ring-accent transition-all">
+            </div>
+            <div class="flex flex-col gap-1">
+                <label class="text-[11px] uppercase font-bold text-muted tracking-wider">Telegram Bot Token</label>
+                <input type="text" name="token" placeholder="1234567890:ABCDE..." required
+                       class="w-full bg-bg border border-border text-text rounded-lg px-4 py-2.5 focus:outline-none focus:ring-1 focus:ring-accent transition-all">
+            </div>
+            <button type="submit" class="btn btn-primary mt-2">
+                Connect Channel
+            </button>
+        </form>
+        <div id="result" class="mt-6 text-sm"></div>
+    </div>
+</div>
