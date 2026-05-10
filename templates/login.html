@@ -1,25 +1,160 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sell! – Login</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --surface: #111111;
+            --border: #222222;
+            --border2: #2e2e2e;
+            --text: #efefef;
+            --text2: #888888;
+            --text3: #555555;
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Instrument Sans', sans-serif;
+            font-size: 14px;
+            min-height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .card {
+            width: 100%;
+            max-width: 360px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px 28px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 28px;
+        }
+
+        .logo-mark {
+            width: 30px;
+            height: 30px;
+            background: var(--text);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Geist Mono', monospace;
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--bg);
+        }
+
+        .logo-text {
+            font-family: 'Geist Mono', monospace;
+            font-weight: 600;
+            font-size: 15px;
+            color: var(--text);
+        }
+
+        h2 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text2);
+            margin-bottom: 20px;
+            letter-spacing: 0.01em;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 14px;
+        }
+
+        .field label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.09em;
+            color: var(--text3);
+            font-family: 'Geist Mono', monospace;
+        }
+
+        .field input {
+            background: #0a0a0a;
+            border: 1px solid var(--border2);
+            border-radius: 8px;
+            padding: 10px 13px;
+            color: var(--text);
+            font-family: 'Instrument Sans', sans-serif;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.15s;
+            width: 100%;
+        }
+
+        .field input:focus {
+            border-color: var(--text3);
+        }
+
+        .btn {
+            width: 100%;
+            background: var(--text);
+            color: var(--bg);
+            border: none;
+            border-radius: 8px;
+            padding: 10px;
+            font-family: 'Instrument Sans', sans-serif;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: background 0.15s;
+        }
+
+        .btn:hover {
+            background: #d8d8d8;
+        }
+    </style>
 </head>
-<body class="bg-gray-900 h-screen flex items-center justify-center">
-    <div class="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700">
-        <div class="flex items-center gap-3 mb-8">
-            <div class="w-10 h-10 bg-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-xl">S</div>
-            <span class="text-2xl font-bold text-white">Sell!</span>
+
+<body>
+    <div class="card">
+        <div class="logo">
+            <div class="logo-mark">S</div>
+            <span class="logo-text">Sell!</span>
         </div>
-        <h2 class="text-white text-lg font-semibold mb-6">Admin Login</h2>
+        <h2>Admin login</h2>
         <form method="POST" action="/login">
-            <input type="password" name="password" placeholder="Enter password" required
-                   class="w-full px-4 py-3 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4">
-            <button type="submit" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 rounded-lg font-semibold transition-colors">
-                Log in
-            </button>
+            <div class="field">
+                <label>Password</label>
+                <input type="password" name="password" placeholder="Enter password" required autofocus>
+            </div>
+            <button type="submit" class="btn">Log in</button>
         </form>
     </div>
 </body>
+
 </html>

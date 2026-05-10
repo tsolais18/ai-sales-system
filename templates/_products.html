@@ -1,21 +1,17 @@
-<div class="p-0">
+<div>
     <div class="section-header">
         <h2 class="section-title">Products</h2>
-        <button class="btn btn-primary"
-            hx-get="/admin/products/add-form"
-            hx-target="#add-product-form"
+        <button class="btn btn-primary" hx-get="/admin/products/add-form" hx-target="#add-product-form"
             hx-swap="innerHTML">
-            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
             </svg>
             Add Product
         </button>
     </div>
 
-    <!-- Add form slot -->
     <div id="add-product-form"></div>
 
-    <!-- Table -->
     <div class="table-card">
         <div class="table-scroll">
             <table>
@@ -43,14 +39,11 @@
                             <div class="actions-cell">
                                 <button class="action-btn action-edit"
                                     hx-get="/admin/products/{{ product.id }}/edit-form"
-                                    hx-target="#product-{{ product.id }}"
-                                    hx-swap="outerHTML">
+                                    hx-target="#product-{{ product.id }}" hx-swap="outerHTML">
                                     Edit
                                 </button>
-                                <button class="action-btn action-delete"
-                                    hx-delete="/api/products/{{ product.id }}"
-                                    hx-confirm="Delete this product?"
-                                    hx-target="#product-{{ product.id }}"
+                                <button class="action-btn action-delete" hx-delete="/api/products/{{ product.id }}"
+                                    hx-confirm="Delete this product?" hx-target="#product-{{ product.id }}"
                                     hx-swap="outerHTML">
                                     Delete
                                 </button>
@@ -63,7 +56,7 @@
                         <td colspan="4">
                             <div class="empty-state">
                                 <div class="empty-icon">📦</div>
-                                <p>No products yet. Add your first book!</p>
+                                <p>No products yet. Add your first one.</p>
                             </div>
                         </td>
                     </tr>

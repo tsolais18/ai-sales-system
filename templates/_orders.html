@@ -1,90 +1,78 @@
-<div class="section-header">
-    <h2 class="section-title">Orders</h2>
-</div>
+<div>
+    <div class="section-header">
+        <h2 class="section-title">Orders</h2>
+    </div>
 
-<!-- Filter Bar -->
-<div class="filter-bar">
-    <button class="pill active" hx-get="/admin/orders" hx-target="#main-content">
-        All
-    </button>
-    <button class="pill pill-warn" hx-get="/admin/orders?status=pending" hx-target="#main-content">
-        Pending
-    </button>
-    <button class="pill pill-success" hx-get="/admin/orders?status=confirmed" hx-target="#main-content">
-        Confirmed
-    </button>
-    <button class="pill pill-danger" hx-get="/admin/orders?status=cancelled" hx-target="#main-content">
-        Cancelled
-    </button>
-</div>
+    <div class="filter-bar">
+        <button class="pill active" hx-get="/admin/orders" hx-target="#main-content">All</button>
+        <button class="pill pill-warn" hx-get="/admin/orders?status=pending" hx-target="#main-content">Pending</button>
+        <button class="pill pill-success" hx-get="/admin/orders?status=confirmed"
+            hx-target="#main-content">Confirmed</button>
+        <button class="pill pill-danger" hx-get="/admin/orders?status=cancelled"
+            hx-target="#main-content">Cancelled</button>
+    </div>
 
-<!-- Table Card -->
-<div class="table-card">
-    <div class="table-scroll">
-        <table>
-            <thead>
-                <tr>
-                    <th>Order ID</th>
-                    <th>Customer</th>
-                    <th>Items</th>
-                    <th>Total</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="order-list">
-                {% for order in orders %}
-                <tr id="order-{{ order.id }}">
-                    <td>
-                        <div class="order-id">#{{ order.id }}</div>
-                    </td>
-                    <td>
-                        <div class="customer-name">{{ order.customer_name }}</div>
-                    </td>
-                    <td>
-                        <div class="item-list">
-                            {% for item in order['items'] %}
-                            <div>{{ item.name }} × {{ item.quantity }}</div>
-                            {% endfor %}
-                        </div>
-                    </td>
-                    <td>
-                        <div class="amount">₦{{ "%.2f"|format(order.total) }}</div>
-                    </td>
-                    <td>
-                        <span class="badge badge-{{ order.status }}">
-                            {{ order.status | capitalize }}
-                        </span>
-                    </td>
-                    <td>
-                        <div class="actions-cell">
-                            {% if order.status == 'pending' %}
-                            <button class="action-btn action-confirm" hx-patch="/api/orders/{{ order.id }}/status"
-                                hx-vals='{"status": "confirmed"}' hx-target="#order-{{ order.id }}" hx-swap="outerHTML">
-                                Confirm
-                            </button>
-                            <button class="action-btn action-cancel" hx-patch="/api/orders/{{ order.id }}/status"
-                                hx-vals='{"status": "cancelled"}' hx-target="#order-{{ order.id }}" hx-swap="outerHTML">
-                                Cancel
-                            </button>
-                            {% else %}
-                            <span style="color: var(--border); font-size: 12px;">Completed</span>
-                            {% endif %}
-                        </div>
-                    </td>
-                </tr>
-                {% endfor %}
-                {% if not orders %}
-                <tr>
-                    <td colspan="6">
-                        <div class="empty-state">
-                            <div class="empty-icon">📦</div>
-                            <p>No orders found in this category.</p>
-                        </div>
-                    </td>
-                </tr>
-                {% endif %}
-            </tbody>
-        </table>
+    <div class="table-card">
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Order</th>
+                        <th>Customer</th>
+                        <th>Items</th>
+                        <th>Total</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="order-list">
+                    {% for order in orders %}
+                    <tr id="order-{{ order.id }}">
+                        <td><span class="order-id">#{{ order.id }}</span></td>
+                        <td><span class="customer-name">{{ order.customer_name }}</span></td>
+                        <td>
+                            <div class="item-list">
+                                {% for item in order['items'] %}
+                                <div>{{ item.name }} × {{ item.quantity }}</div>
+                                {% endfor %}
+                            </div>
+                        </td>
+                        <td><span class="amount">₦{{ "%.2f"|format(order.total) }}</span></td>
+                        <td>
+                            <span class="badge badge-{{ order.status }}">{{ order.status | capitalize }}</span>
+                        </td>
+                        <td>
+                            <div class="actions-cell">
+                                {% if order.status == 'pending' %}
+                                <button class="action-btn action-confirm" hx-patch="/api/orders/{{ order.id }}/status"
+                                    hx-vals='{"status": "confirmed"}' hx-target="#order-{{ order.id }}"
+                                    hx-swap="outerHTML">
+                                    Confirm
+                                </button>
+                                <button class="action-btn action-cancel" hx-patch="/api/orders/{{ order.id }}/status"
+                                    hx-vals='{"status": "cancelled"}' hx-target="#order-{{ order.id }}"
+                                    hx-swap="outerHTML">
+                                    Cancel
+                                </button>
+                                {% else %}
+                                <span style="font-size:12px;color:var(--text3);">Done</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not orders %}
+                    <tr>
+                        <td colspan="6">
+                            <div class="empty-state">
+                                <div class="empty-icon">📋</div>
+                                <p>No orders in this category.</p>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
