@@ -12,9 +12,6 @@ def escape_markdown(text: str) -> str:
     return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
 
 import telegram
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.middleware import SlowAPIMiddleware
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Form, HTTPException, Header
 from fastapi.responses import HTMLResponse, Response
@@ -180,10 +177,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Sell! Admin API", lifespan=lifespan)
 app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "change-me-now"))
 
-limiter = Limiter(key_func=get_remote_address, default_limits=["200 per day", "50 per hour"])
-app.state.limiter = limiter
-app.add_middleware(SlowAPIMiddleware)
-app.add_exception_handler(429, _rate_limit_exceeded_handler)
 
 
 # ── Telegram command handlers ─────────────────────────────
@@ -263,7 +256,6 @@ async def orders_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 
-@limiter.limit("10 per minute")
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     business_id = context.bot_data.get("business_id", DEFAULT_BUSINESS_ID)
     user_id = str(update.effective_user.id)
@@ -389,7 +381,6 @@ async def login_page(request: Request):
     content = template.render({"request": request})
     return HTMLResponse(content)
 
-@limiter.limit("5 per minute")
 @app.post("/login")
 async def login(request: Request, password: str = Form(...)):
     if verify_password(password):
