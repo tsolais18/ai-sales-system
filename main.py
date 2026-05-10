@@ -699,6 +699,15 @@ async def api_stats(request: Request):
 async def admin_dashboard(request: Request, _=Depends(login_required)):
     user = await get_current_user(request)
     business_id = get_current_business_id(request)
+
+    # Count active channels for this business
+    channels_res = supabase.table("channels") \
+        .select("id") \
+        .eq("business_id", business_id) \
+        .eq("is_active", True) \
+        .execute()
+    channels_count = len(channels_res.data or [])
+
     # Fetch all businesses for the switcher dropdown
     biz_res = supabase.table("businesses").select("id", "name").order("id").execute()
     businesses = biz_res.data or []
@@ -708,7 +717,8 @@ async def admin_dashboard(request: Request, _=Depends(login_required)):
         "request": request,
         "businesses": businesses,
         "current_business_id": business_id,
-        "is_superadmin": user.get("is_superadmin", False)
+        "is_superadmin": user.get("is_superadmin", False),
+        "channels_count": channels_count
     })
     return HTMLResponse(content)
 
@@ -962,15 +972,9 @@ async def telegram_webhook(token: str, request: Request):
 
 
 @app.post("/admin/channels/add")
-async def add_channel(request: Request, token: str = Form(...), business_name: str = Form("New Business"), _=Depends(login_required), _csrf=Depends(csrf_check)):
-    """Add a new Telegram channel and create a business if needed."""
-    # Create a new business
-    slug = business_name.lower().replace(" ", "-")
-    business = supabase.table("businesses").insert({
-        "name": business_name,
-        "slug": slug,
-    }).execute()
-    business_id = business.data[0]["id"]
+async def add_channel(request: Request, token: str = Form(...), business_name: str = Form(""), _=Depends(login_required), _csrf=Depends(csrf_check)):
+    """Add a new Telegram channel for the current business."""
+    business_id = get_current_business_id(request)
 
     # Insert the channel
     supabase.table("channels").insert({
@@ -981,15 +985,15 @@ async def add_channel(request: Request, token: str = Form(...), business_name: s
     }).execute()
 
     # Register the webhook
-    base_url = os.getenv("RAILWAY_PUBLIC_URL", "https://your-app.up.railway.app")
+    base_url = os.getenv("RAILWAY_PUBLIC_URL", "https://ai-sales-system-production.up.railway.app")
     try:
         bot = telegram.Bot(token)
         await bot.set_webhook(f"{base_url}/webhook/{token}")
-        message = f"✅ Channel connected! New business ID: {business_id}"
+        message = "✅ Bot connected successfully! <a href='/admin' style='color:var(--text);text-decoration:underline;'>Go to Dashboard</a>"
     except Exception as e:
-        message = f"⚠️ Business created, but webhook failed: {e}"
+        message = f"⚠️ Channel created, but webhook failed: {e}"
 
-    return HTMLResponse(f"<p class='text-green-400'>{message}</p>")
+    return HTMLResponse(f"<p style='color:var(--success);'>{message}</p>")
 
 
 @app.get("/admin/connect-form", response_class=HTMLResponse)

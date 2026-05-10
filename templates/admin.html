@@ -780,14 +780,14 @@
 
                 <div style="height:1px;background:var(--border);margin:6px 0;"></div>
 
-                {% if is_superadmin %}
+                {% if channels_count == 0 %}
                 <button class="nav-item" id="nav-connect" hx-get="/admin/connect-form" hx-target="#main-content"
                     hx-indicator="#spinner" onclick="setActive('connect'); closeSidebar()">
                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"
                         viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
                     </svg>
-                    Connect
+                    Connect Bot
                     <span class="nav-dot"></span>
                 </button>
                 {% endif %}
