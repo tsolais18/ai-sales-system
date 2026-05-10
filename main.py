@@ -51,6 +51,10 @@ logger = logging.getLogger(__name__)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 DEFAULT_BUSINESS_ID = 1
 
+def get_current_business_id(request: Request) -> int:
+    """Get the business_id from session, or fall back to the default."""
+    return request.session.get("current_business_id", DEFAULT_BUSINESS_ID)
+
 telegram_app: Application = None
 
 
@@ -307,8 +311,8 @@ app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "change
 
 
 @app.get("/debug/catalog")
-async def debug_catalog():
-    business_id = DEFAULT_BUSINESS_ID
+async def debug_catalog(request: Request):
+    business_id = get_current_business_id(request)
     products = supabase.table("products") \
         .select("*") \
         .eq("business_id", business_id) \
@@ -360,20 +364,21 @@ async def logout(request: Request):
 
 @app.get("/api/products")
 
-async def api_get_products():
-    business_id = DEFAULT_BUSINESS_ID  # TODO: get from authenticated user's business
+async def api_get_products(request: Request):
+    business_id = get_current_business_id(request)  # TODO: get from authenticated user's business
     response = supabase.table("products").select("*").eq("business_id", business_id).order("id").execute()
     return response.data or []
 
 
 @app.post("/api/products")
 async def api_add_product(
+    request: Request,
     name: str = Form(...),
     description: str = Form(""),
     price: float = Form(...),
     _=Depends(login_required)
 ):
-    business_id = DEFAULT_BUSINESS_ID
+    business_id = get_current_business_id(request)
     response = supabase.table("products").insert({
         "name": name,
         "description": description,
@@ -413,7 +418,7 @@ async def api_add_product(
 @app.patch("/api/products/{product_id}")
 @app.put("/api/products/{product_id}")
 async def api_update_product(product_id: str, request: Request, hx_target: str = Header(None), _=Depends(login_required)):
-    business_id = DEFAULT_BUSINESS_ID
+    business_id = get_current_business_id(request)
     if request.headers.get("content-type") == "application/json":
         body = await request.json()
     else:
@@ -477,8 +482,8 @@ async def api_update_product(product_id: str, request: Request, hx_target: str =
 
 # ── Delete product (DELETE) ──────────────────────────────
 @app.delete("/api/products/{product_id}")
-async def api_delete_product(product_id: str, _=Depends(login_required)):
-    business_id = DEFAULT_BUSINESS_ID
+async def api_delete_product(product_id: str, request: Request, _=Depends(login_required)):
+    business_id = get_current_business_id(request)
     resp = supabase.table("products") \
         .delete() \
         .eq("id", product_id) \
@@ -490,14 +495,14 @@ async def api_delete_product(product_id: str, _=Depends(login_required)):
 
 
 @app.get("/api/orders")
-async def api_get_orders(status: str = None):
-    business_id = DEFAULT_BUSINESS_ID
+async def api_get_orders(request: Request, status: str = None):
+    business_id = get_current_business_id(request)
     return get_all_orders(business_id, status=status)
 
 
 @app.patch("/api/orders/{order_id}/status")
 async def api_update_order_status(order_id: int, request: Request, hx_target: str = Header(None), _=Depends(login_required)):
-    business_id = DEFAULT_BUSINESS_ID
+    business_id = get_current_business_id(request)
     body = await request.json()
     new_status = body.get("status")
     if new_status not in ("pending", "confirmed", "cancelled"):
@@ -556,8 +561,8 @@ async def api_update_order_status(order_id: int, request: Request, hx_target: st
 
 
 @app.get("/api/stats")
-async def api_stats():
-    business_id = DEFAULT_BUSINESS_ID
+async def api_stats(request: Request):
+    business_id = get_current_business_id(request)
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
     today = now.strftime("%Y-%m-%d")
@@ -587,16 +592,24 @@ async def api_stats():
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, _=Depends(login_required)):
-    """Render the full admin dashboard page."""
+    business_id = get_current_business_id(request)
+    # Fetch all businesses for the switcher dropdown
+    biz_res = supabase.table("businesses").select("id", "name").order("id").execute()
+    businesses = biz_res.data or []
+
     template = templates.get_template("admin.html")
-    content = template.render({"request": request})
+    content = template.render({
+        "request": request,
+        "businesses": businesses,
+        "current_business_id": business_id
+    })
     return HTMLResponse(content)
 
 
 @app.get("/admin/products", response_class=HTMLResponse)
 async def admin_products_partial(request: Request, _=Depends(login_required)):
     """Return only the product table (HTMX partial)."""
-    business_id = DEFAULT_BUSINESS_ID  # will be replaced by real auth later
+    business_id = get_current_business_id(request)  # will be replaced by real auth later
     products = supabase.table("products") \
         .select("*") \
         .eq("business_id", business_id) \
@@ -730,7 +743,7 @@ async def product_view_row(product_id: str, hx_target: str = Header(None), _=Dep
 
 @app.get("/admin/orders", response_class=HTMLResponse)
 async def admin_orders_partial(request: Request, status: str = None, _=Depends(login_required)):
-    business_id = DEFAULT_BUSINESS_ID
+    business_id = get_current_business_id(request)
     query = supabase.table("orders") \
         .select("*") \
         .eq("business_id", business_id) \
@@ -797,8 +810,8 @@ async def debug_last_orders():
 
 
 @app.get("/debug/orders-raw")
-async def debug_orders_raw():
-    business_id = DEFAULT_BUSINESS_ID
+async def debug_orders_raw(request: Request):
+    business_id = get_current_business_id(request)
     res = supabase.table("orders") \
         .select("*") \
         .eq("business_id", business_id) \
@@ -879,9 +892,20 @@ async def connect_form(request: Request, _=Depends(login_required)):
 
 
 # ── Settings Page ───────────────────────────────────────
+@app.post("/admin/switch-business/{business_id}")
+async def switch_business(request: Request, business_id: int, _=Depends(login_required)):
+    request.session["current_business_id"] = business_id
+    return RedirectResponse("/admin", status_code=303)
+
+@app.get("/api/businesses")
+async def get_businesses(_=Depends(login_required)):
+    """Return all businesses (for the admin switcher dropdown)."""
+    res = supabase.table("businesses").select("id", "name").order("id").execute()
+    return res.data or []
+
 @app.get("/admin/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, _=Depends(login_required)):
-    business_id = DEFAULT_BUSINESS_ID  # will be dynamic after multi‑admin auth
+    business_id = get_current_business_id(request)  # will be dynamic after multi‑admin auth
     res = supabase.table("businesses") \
         .select("settings") \
         .eq("id", business_id) \
@@ -894,7 +918,7 @@ async def settings_page(request: Request, _=Depends(login_required)):
 
 @app.post("/api/business/settings")
 async def save_settings(request: Request, _=Depends(login_required)):
-    business_id = DEFAULT_BUSINESS_ID
+    business_id = get_current_business_id(request)
     form = await request.form()
     settings = {
         "tone": form.get("tone", "friendly"),
