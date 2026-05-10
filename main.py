@@ -500,6 +500,17 @@ async def api_get_orders(request: Request, status: str = None):
     business_id = get_current_business_id(request)
     return get_all_orders(business_id, status=status)
 
+@app.get("/api/orders/pending-count")
+async def pending_order_count(request: Request, _=Depends(login_required)):
+    business_id = get_current_business_id(request)
+    res = supabase.table("orders") \
+        .select("id") \
+        .eq("business_id", business_id) \
+        .eq("status", "pending") \
+        .execute()
+    count = len(res.data or [])
+    return str(count)
+
 
 @app.patch("/api/orders/{order_id}/status")
 async def api_update_order_status(order_id: int, request: Request, hx_target: str = Header(None), _=Depends(login_required)):

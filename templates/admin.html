@@ -767,6 +767,11 @@
                             d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
                     Orders
+                    <span id="pending-badge"
+                          hx-get="/api/orders/pending-count"
+                          hx-trigger="load, every 30s"
+                          style="display:none; margin-left:auto; background:var(--danger); color:var(--bg); font-size:10px; font-weight:700; padding:2px 6px; border-radius:10px; font-family:'Geist Mono',monospace; line-height:1;">
+                    </span>
                     <span class="nav-dot"></span>
                 </button>
 
@@ -840,6 +845,19 @@
                 e.target.style.animation = 'none';
                 e.target.offsetHeight; // reflow
                 e.target.style.animation = '';
+            }
+        });
+
+        // Handle pending badge visibility
+        document.body.addEventListener('htmx:afterSwap', function (e) {
+            if (e.target.id === 'pending-badge') {
+                const count = parseInt(e.target.innerText);
+                if (count > 0) {
+                    e.target.style.display = 'inline-block';
+                    e.target.innerText = count;
+                } else {
+                    e.target.style.display = 'none';
+                }
             }
         });
 
