@@ -12,6 +12,9 @@ def escape_markdown(text: str) -> str:
     return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
 
 import telegram
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.middleware import SlowAPIMiddleware
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Form, HTTPException, Header
 from fastapi.responses import HTMLResponse, Response
@@ -42,11 +45,29 @@ from supabase_client import supabase
 
 load_dotenv()
 
+TOKEN_FILTER = re.compile(r"(bot\d+:)[\w\-]+")
+
+class TokenMaskingFilter(logging.Filter):
+    def filter(self, record):
+        if record.msg and isinstance(record.msg, str):
+            record.msg = TOKEN_FILTER.sub(r"\1***", record.msg)
+        return True
+
+async def csrf_check(request: Request):
+    # Bypass CSRF for GET requests and login/logout
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return
+    if request.url.path in ("/login", "/logout"):
+        return
+    if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+        raise HTTPException(status_code=403, detail="CSRF token missing")
+
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+logging.getLogger("httpx").addFilter(TokenMaskingFilter())
 
 # ── Telegram Bot Setup ────────────────────────────────────
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -152,6 +173,7 @@ async def orders_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 
+@limiter.limit("10 per minute")
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     business_id = context.bot_data.get("business_id", DEFAULT_BUSINESS_ID)
     user_id = str(update.effective_user.id)
@@ -306,8 +328,13 @@ async def lifespan(app: FastAPI):
         logger.info("🤖 Telegram bot stopped")
 
 
-app = FastAPI(title="Store Admin API", lifespan=lifespan)
+app = FastAPI(title="Sell! Admin API", lifespan=lifespan)
 app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "change-me-now"))
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["200 per day", "50 per hour"])
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+app.add_exception_handler(429, _rate_limit_exceeded_handler)
 
 
 
@@ -350,6 +377,7 @@ async def login_page(request: Request):
     content = template.render({"request": request})
     return HTMLResponse(content)
 
+@limiter.limit("5 per minute")
 @app.post("/login")
 async def login(request: Request, password: str = Form(...)):
     if verify_password(password):
@@ -377,7 +405,8 @@ async def api_add_product(
     name: str = Form(...),
     description: str = Form(""),
     price: float = Form(...),
-    _=Depends(login_required)
+    _=Depends(login_required),
+    _csrf=Depends(csrf_check)
 ):
     business_id = get_current_business_id(request)
     response = supabase.table("products").insert({
@@ -418,7 +447,7 @@ async def api_add_product(
 # ── Update product (PATCH/PUT) ────────────────────────────
 @app.patch("/api/products/{product_id}")
 @app.put("/api/products/{product_id}")
-async def api_update_product(product_id: str, request: Request, hx_target: str = Header(None), _=Depends(login_required)):
+async def api_update_product(product_id: str, request: Request, hx_target: str = Header(None), _=Depends(login_required), _csrf=Depends(csrf_check)):
     business_id = get_current_business_id(request)
     if request.headers.get("content-type") == "application/json":
         body = await request.json()
@@ -483,7 +512,7 @@ async def api_update_product(product_id: str, request: Request, hx_target: str =
 
 # ── Delete product (DELETE) ──────────────────────────────
 @app.delete("/api/products/{product_id}")
-async def api_delete_product(product_id: str, request: Request, _=Depends(login_required)):
+async def api_delete_product(product_id: str, request: Request, _=Depends(login_required), _csrf=Depends(csrf_check)):
     business_id = get_current_business_id(request)
     resp = supabase.table("products") \
         .delete() \
@@ -513,7 +542,7 @@ async def pending_order_count(request: Request, _=Depends(login_required)):
 
 
 @app.patch("/api/orders/{order_id}/status")
-async def api_update_order_status(order_id: int, request: Request, hx_target: str = Header(None), _=Depends(login_required)):
+async def api_update_order_status(order_id: int, request: Request, hx_target: str = Header(None), _=Depends(login_required), _csrf=Depends(csrf_check)):
     business_id = get_current_business_id(request)
     body = await request.json()
     new_status = body.get("status")
@@ -867,7 +896,7 @@ async def telegram_webhook(token: str, request: Request):
 
 
 @app.post("/admin/channels/add")
-async def add_channel(request: Request, token: str = Form(...), business_name: str = Form("New Business"), _=Depends(login_required)):
+async def add_channel(request: Request, token: str = Form(...), business_name: str = Form("New Business"), _=Depends(login_required), _csrf=Depends(csrf_check)):
     """Add a new Telegram channel and create a business if needed."""
     # Create a new business
     slug = business_name.lower().replace(" ", "-")
@@ -905,7 +934,7 @@ async def connect_form(request: Request, _=Depends(login_required)):
 
 # ── Settings Page ───────────────────────────────────────
 @app.post("/admin/switch-business/{business_id}")
-async def switch_business(request: Request, business_id: int, _=Depends(login_required)):
+async def switch_business(request: Request, business_id: int, _=Depends(login_required), _csrf=Depends(csrf_check)):
     request.session["current_business_id"] = business_id
     return RedirectResponse("/admin", status_code=303)
 
@@ -987,7 +1016,7 @@ async def admin_dashboard_home(request: Request, _=Depends(login_required)):
     return HTMLResponse(content)
 
 @app.post("/api/business/settings")
-async def save_settings(request: Request, _=Depends(login_required)):
+async def save_settings(request: Request, _=Depends(login_required), _csrf=Depends(csrf_check)):
     business_id = get_current_business_id(request)
     form = await request.form()
     settings = {
