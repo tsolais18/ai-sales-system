@@ -84,7 +84,12 @@ def get_current_business_id(request: Request) -> int:
         if user_res.data:
             if user_res.data["is_superadmin"]:
                 return DEFAULT_BUSINESS_ID   # superadmin sees default, but can switch
-            return user_res.data.get("business_id") or DEFAULT_BUSINESS_ID
+            
+            # Non-superadmins get locked to their own business
+            business_id = user_res.data.get("business_id") or DEFAULT_BUSINESS_ID
+            request.session["current_business_id"] = business_id
+            return business_id
+            
     return DEFAULT_BUSINESS_ID
 
 telegram_app: Application = None
@@ -447,6 +452,8 @@ async def login(request: Request, email: str = Form(...), password: str = Form(.
         return HTMLResponse("Invalid email or password", status_code=401)
     user = res.data
     request.session["user_id"] = user["id"]
+    # Nuke any previously selected business — forces per-user isolation
+    request.session.pop("current_business_id", None)
     return RedirectResponse("/admin", status_code=303)
 
 @app.get("/logout")
