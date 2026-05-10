@@ -96,6 +96,96 @@ async def get_business_id_for_telegram(token: str) -> int:
     return DEFAULT_BUSINESS_ID
 
 
+# ── App & Security Setup ──────────────────────────────────
+
+
+# ── App & Security Setup ──────────────────────────────────
+
+async def build_telegram_app() -> Application:
+    # Fetch any active Telegram token (just for initialization)
+    res = supabase.table("channels") \
+        .select("identifier") \
+        .eq("channel_type", "telegram") \
+        .eq("is_active", True) \
+        .limit(1) \
+        .execute()
+    
+    token = res.data[0]["identifier"] if res.data and len(res.data) > 0 else os.getenv("FALLBACK_BOT_TOKEN", "none")
+
+    request = HTTPXRequest(
+        connect_timeout=30.0,
+        read_timeout=30.0,
+        write_timeout=30.0,
+        pool_timeout=30.0,
+    )
+    
+    app_builder = Application.builder().token(token).request(request)
+    application = app_builder.build()
+    
+    # Core command handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("catalog", catalog))
+    application.add_handler(CommandHandler("search", search))
+    application.add_handler(CommandHandler("cart", cart))
+    application.add_handler(CommandHandler("add", add))
+    application.add_handler(CommandHandler("orders", orders_cmd))
+    application.add_handler(CallbackQueryHandler(handle_order_callback, pattern="^(confirm|cancel):"))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+    
+    # Register admin commands
+    register_admin_handlers(application)
+    
+    application.add_error_handler(error_handler)
+    return application
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Setup Telegram bots for all active channels."""
+    global telegram_app
+    try:
+        # 1. Initialize the Telegram Application
+        telegram_app = await build_telegram_app()
+        await telegram_app.initialize()
+        await telegram_app.start()
+
+        # 2. Set webhooks for all businesses
+        base_url = os.getenv("RAILWAY_PUBLIC_URL", "https://your-app.up.railway.app")
+        channels = supabase.table("channels") \
+            .select("*") \
+            .eq("channel_type", "telegram") \
+            .eq("is_active", True) \
+            .execute()
+
+        for ch in channels.data or []:
+            tok = ch["identifier"]
+            try:
+                bot = telegram.Bot(tok)
+                await bot.set_webhook(f"{base_url}/webhook/{tok}")
+                logger.info(f"Webhook set for channel {ch['id']} (business {ch['business_id']})")
+            except Exception as e:
+                logger.error(f"Failed to set webhook for channel {ch['id']}: {e}")
+
+        logger.info("🤖 Telegram bots running in webhook mode")
+    except Exception as e:
+        logger.error(f"❌ Failed to start Telegram bot: {e}")
+
+    yield
+
+    if telegram_app:
+        if telegram_app.running:
+            await telegram_app.stop()
+        await telegram_app.shutdown()
+        logger.info("🤖 Telegram bot stopped")
+
+app = FastAPI(title="Sell! Admin API", lifespan=lifespan)
+app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "change-me-now"))
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["200 per day", "50 per hour"])
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+app.add_exception_handler(429, _rate_limit_exceeded_handler)
+
+
 # ── Telegram command handlers ─────────────────────────────
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -254,87 +344,9 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
         logger.error(f"Unhandled error: {context.error}", exc_info=context.error)
 
 
-async def build_telegram_app() -> Application:
-    # Fetch any active Telegram token (just for initialization)
-    res = supabase.table("channels") \
-        .select("identifier") \
-        .eq("channel_type", "telegram") \
-        .eq("is_active", True) \
-        .limit(1) \
-        .execute()
-    
-    token = res.data[0]["identifier"] if res.data and len(res.data) > 0 else os.getenv("FALLBACK_BOT_TOKEN", "none")
-
-    request = HTTPXRequest(
-        connect_timeout=30.0,
-        read_timeout=30.0,
-        write_timeout=30.0,
-        pool_timeout=30.0,
-    )
-    app = Application.builder().token(token).request(request).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("catalog", catalog))
-    app.add_handler(CommandHandler("search", search))
-    app.add_handler(CommandHandler("cart", cart))
-    app.add_handler(CommandHandler("add", add))
-    app.add_handler(CommandHandler("orders", orders_cmd))
-    app.add_handler(CallbackQueryHandler(handle_order_callback, pattern="^(confirm|cancel):"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
-
-    register_admin_handlers(app)
-
-    app.add_error_handler(error_handler)
-    return app
 
 
-# ── FastAPI App + Lifespan ────────────────────────────────
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global telegram_app
-    try:
-        telegram_app = await build_telegram_app()
-        await telegram_app.initialize()
-        await telegram_app.start()
-
-        # Register webhooks for all active Telegram channels
-        base_url = os.getenv("RAILWAY_PUBLIC_URL", "https://your-app.up.railway.app")
-        channels = supabase.table("channels") \
-            .select("*") \
-            .eq("channel_type", "telegram") \
-            .eq("is_active", True) \
-            .execute()
-
-        for ch in channels.data or []:
-            tok = ch["identifier"]
-            try:
-                bot = telegram.Bot(tok)
-                await bot.set_webhook(f"{base_url}/webhook/{tok}")
-                logger.info(f"Webhook set for channel {ch['id']} (business {ch['business_id']})")
-            except Exception as e:
-                logger.error(f"Failed to set webhook for channel {ch['id']}: {e}")
-
-        logger.info("🤖 Telegram bots running in webhook mode")
-    except Exception as e:
-        logger.error(f"❌ Failed to start Telegram bot: {e}")
-
-    yield
-
-    if telegram_app:
-        if telegram_app.running:
-            await telegram_app.stop()
-        await telegram_app.shutdown()
-        logger.info("🤖 Telegram bot stopped")
-
-
-app = FastAPI(title="Sell! Admin API", lifespan=lifespan)
-app.add_middleware(SessionMiddleware, secret_key=os.getenv("SECRET_KEY", "change-me-now"))
-
-limiter = Limiter(key_func=get_remote_address, default_limits=["200 per day", "50 per hour"])
-app.state.limiter = limiter
-app.add_middleware(SlowAPIMiddleware)
-app.add_exception_handler(429, _rate_limit_exceeded_handler)
 
 
 
