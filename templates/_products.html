@@ -1,0 +1,75 @@
+<div class="p-0">
+    <div class="section-header">
+        <h2 class="section-title">Products</h2>
+        <button class="btn btn-primary"
+            hx-get="/admin/products/add-form"
+            hx-target="#add-product-form"
+            hx-swap="innerHTML">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+            </svg>
+            Add Product
+        </button>
+    </div>
+
+    <!-- Add form slot -->
+    <div id="add-product-form"></div>
+
+    <!-- Table -->
+    <div class="table-card">
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Price</th>
+                        <th>Stock</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="product-list">
+                    {% for product in products %}
+                    <tr id="product-{{ product.id }}">
+                        <td><span class="product-name">{{ product.name }}</span></td>
+                        <td><span class="amount">₦{{ "%.2f"|format(product.price) }}</span></td>
+                        <td>
+                            {% if product.stock > 0 %}
+                            <span class="badge badge-in-stock">In Stock ({{ product.stock }})</span>
+                            {% else %}
+                            <span class="badge badge-out">Out of Stock</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="actions-cell">
+                                <button class="action-btn action-edit"
+                                    hx-get="/admin/products/{{ product.id }}/edit-form"
+                                    hx-target="#product-{{ product.id }}"
+                                    hx-swap="outerHTML">
+                                    Edit
+                                </button>
+                                <button class="action-btn action-delete"
+                                    hx-delete="/api/products/{{ product.id }}"
+                                    hx-confirm="Delete this product?"
+                                    hx-target="#product-{{ product.id }}"
+                                    hx-swap="outerHTML">
+                                    Delete
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not products %}
+                    <tr>
+                        <td colspan="4">
+                            <div class="empty-state">
+                                <div class="empty-icon">📦</div>
+                                <p>No products yet. Add your first book!</p>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
