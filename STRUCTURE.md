@@ -7,7 +7,7 @@ It assumes you’ve already read the `README.md`.
 
 ## 📁 File Map
 ```text
-Cupabooks-main/
+ai-sales-system-main/
 ├── main.py # FastAPI application (all routes, lifespan, Telegram bot setup)
 ├── bot.py # AI conversation logic, order parsing, notification sending
 ├── admin.py # Telegram admin commands (inventory, orders)

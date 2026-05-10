@@ -35,7 +35,7 @@ Built for **any product‑based business**, not just bookstores.
 
 ## 📁 Project Structure
 ```text
-Cupabooks-main/
+ai-sales-system-main/
 ├── main.py # FastAPI app, Telegram handlers, dashboard routes
 ├── bot.py # AI logic, conversation handling, order validation, save_order
 ├── admin.py # Admin Telegram commands (/addproduct, /pending, etc.)

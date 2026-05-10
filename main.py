@@ -198,7 +198,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.effective_user.first_name
     await update.message.reply_text(
         f"👋 Hey {name}! Welcome to our store 🛍\n\n"
-        "I'm Cupa, your personal shopping assistant.\n\n"
+        "I'm Sell, your personal shopping assistant.\n\n"
         "Here's what I can do:\n"
         "• /catalog — Browse all products\n"
         "• /search <name> — Find a product\n"
