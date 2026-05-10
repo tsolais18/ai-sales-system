@@ -111,6 +111,41 @@ def build_catalog_context(business_id: int) -> str:
     return "CURRENT CATALOG:\n" + "\n".join(lines)
 
 
+def build_settings_context(business_id: int) -> str:
+    """Fetches the business's AI settings and returns a prompt snippet."""
+    res = supabase.table("businesses") \
+        .select("settings") \
+        .eq("id", business_id) \
+        .single() \
+        .execute()
+    settings = res.data.get("settings", {}) if res.data else {}
+
+    tone = settings.get("tone", "friendly")
+    sales_style = settings.get("sales_style", "balanced")
+    collect_phone = settings.get("collect_phone", False)
+    collect_email = settings.get("collect_email", False)
+    mention_price_only = settings.get("mention_price_only_when_asked", False)
+
+    rules = []
+    rules.append(f"You are a {tone} salesperson. Keep your replies warm and human.")
+
+    if sales_style == "premium_first":
+        rules.append("Recommend premium or higher-priced products first.")
+    elif sales_style == "discount_focused":
+        rules.append("Mention discounts, deals, or best-value options early in the conversation.")
+    elif sales_style == "soft_sell":
+        rules.append("Be helpful and informative. Don't push for a sale — let the customer decide.")
+
+    if collect_phone:
+        rules.append("Before completing an order, ask for the customer's phone number.")
+    if collect_email:
+        rules.append("Before completing an order, ask for the customer's email address.")
+    if mention_price_only:
+        rules.append("Do NOT mention product prices unless the customer specifically asks.")
+
+    return "\n".join(rules)
+
+
 def build_admin_data_context(business_id: int) -> str:
     now = datetime.now(timezone.utc)
     today = now.strftime("%Y-%m-%d")
@@ -204,6 +239,7 @@ async def handle_message(user_id: str, user_message: str, bot=None, business_id:
 async def handle_admin_message(user_id: str, user_message: str, session: dict, bot=None, business_id: int = 1) -> str:
     admin_data = build_admin_data_context(business_id)
     catalog_context = build_catalog_context(business_id)
+    settings_context = build_settings_context(business_id)
     admin_key = f"admin_{user_id}"
     if admin_key not in sessions:
         sessions[admin_key] = {"history": []}
@@ -211,7 +247,7 @@ async def handle_admin_message(user_id: str, user_message: str, session: dict, b
     admin_session["history"].append({"role": "user", "content": user_message})
 
     messages = [
-        {"role": "system", "content": f"{ADMIN_PROMPT}\n\n{admin_data}\n\n{catalog_context}"},
+        {"role": "system", "content": f"{ADMIN_PROMPT}\n\n{admin_data}\n\n{settings_context}\n\n{catalog_context}"},
         *admin_session["history"][-10:],
     ]
     response = await groq_client.chat.completions.create(
@@ -236,10 +272,11 @@ async def handle_admin_message(user_id: str, user_message: str, session: dict, b
 
 async def handle_customer_message(user_id: str, user_message: str, session: dict, bot=None, business_id: int = 1) -> str:
     catalog_context = build_catalog_context(business_id)
+    settings_context = build_settings_context(business_id)
     session["history"].append({"role": "user", "content": user_message})
 
     messages = [
-        {"role": "system", "content": f"{CUSTOMER_PROMPT}\n\n{catalog_context}"},
+        {"role": "system", "content": f"{CUSTOMER_PROMPT}\n\n{settings_context}\n\n{catalog_context}"},
         *session["history"][-10:],
     ]
     response = await groq_client.chat.completions.create(

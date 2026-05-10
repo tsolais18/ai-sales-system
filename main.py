@@ -878,6 +878,38 @@ async def connect_form(request: Request, _=Depends(login_required)):
     return HTMLResponse(template.render({"request": request}))
 
 
+# ── Settings Page ───────────────────────────────────────
+@app.get("/admin/settings", response_class=HTMLResponse)
+async def settings_page(request: Request, _=Depends(login_required)):
+    business_id = DEFAULT_BUSINESS_ID  # will be dynamic after multi‑admin auth
+    res = supabase.table("businesses") \
+        .select("settings") \
+        .eq("id", business_id) \
+        .single() \
+        .execute()
+    settings = res.data.get("settings", {}) if res.data else {}
+    template = templates.get_template("_settings.html")
+    content = template.render({"request": request, "settings": settings})
+    return HTMLResponse(content)
+
+@app.post("/api/business/settings")
+async def save_settings(request: Request, _=Depends(login_required)):
+    business_id = DEFAULT_BUSINESS_ID
+    form = await request.form()
+    settings = {
+        "tone": form.get("tone", "friendly"),
+        "sales_style": form.get("sales_style", "balanced"),
+        "collect_phone": form.get("collect_phone") == "on",
+        "collect_email": form.get("collect_email") == "on",
+        "mention_price_only_when_asked": form.get("mention_price_only_when_asked") == "on",
+    }
+    supabase.table("businesses") \
+        .update({"settings": settings}) \
+        .eq("id", business_id) \
+        .execute()
+    return HTMLResponse("<p class='text-green-400'>✅ Settings saved!</p>")
+
+
 # ── Entry Point ───────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn

@@ -1,0 +1,56 @@
+<div class="p-6">
+    <div class="section-header">
+        <h2 class="section-title">AI Settings</h2>
+        <span style="font-size:12px;color:var(--muted);">Customise how Cupa interacts with your customers</span>
+    </div>
+
+    <form hx-post="/api/business/settings" hx-target="#settings-result" class="max-w-lg space-y-5">
+        <!-- Tone of voice -->
+        <div>
+            <label class="block text-sm font-medium text-gray-300 mb-1">Conversation Tone</label>
+            <select name="tone" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white">
+                <option value="friendly" {% if settings.tone == 'friendly' %}selected{% endif %}>Friendly & Warm</option>
+                <option value="formal" {% if settings.tone == 'formal' %}selected{% endif %}>Formal & Professional</option>
+                <option value="casual" {% if settings.tone == 'casual' %}selected{% endif %}>Casual & Relaxed</option>
+            </select>
+        </div>
+
+        <!-- Sales style -->
+        <div>
+            <label class="block text-sm font-medium text-gray-300 mb-1">Sales Approach</label>
+            <select name="sales_style" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white">
+                <option value="balanced" {% if settings.sales_style == 'balanced' %}selected{% endif %}>Balanced</option>
+                <option value="premium_first" {% if settings.sales_style == 'premium_first' %}selected{% endif %}>Push Premium Products</option>
+                <option value="discount_focused" {% if settings.sales_style == 'discount_focused' %}selected{% endif %}>Mention Discounts First</option>
+                <option value="soft_sell" {% if settings.sales_style == 'soft_sell' %}selected{% endif %}>Soft Sell (No Pressure)</option>
+            </select>
+        </div>
+
+        <!-- Data collection -->
+        <div>
+            <label class="block text-sm font-medium text-gray-300 mb-1">Data Collection</label>
+            <div class="space-y-2">
+                <label class="flex items-center gap-2 text-sm text-gray-400">
+                    <input type="checkbox" name="collect_phone" {% if settings.collect_phone %}checked{% endif %} class="rounded bg-gray-700 border-gray-600">
+                    Ask for phone number before order
+                </label>
+                <label class="flex items-center gap-2 text-sm text-gray-400">
+                    <input type="checkbox" name="collect_email" {% if settings.collect_email %}checked{% endif %} class="rounded bg-gray-700 border-gray-600">
+                    Ask for email address before order
+                </label>
+            </div>
+        </div>
+
+        <!-- Mention price rule -->
+        <div>
+            <label class="flex items-center gap-2 text-sm text-gray-400">
+                <input type="checkbox" name="mention_price_only_when_asked" {% if settings.mention_price_only_when_asked %}checked{% endif %} class="rounded bg-gray-700 border-gray-600">
+                Don't mention price unless the customer asks
+            </label>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Save Settings</button>
+    </form>
+
+    <div id="settings-result" class="mt-4"></div>
+</div>
