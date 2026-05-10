@@ -360,7 +360,18 @@ async def save_order(
             [[InlineKeyboardButton("✅ Confirm", callback_data=f"confirm:{order['id']}")],
              [InlineKeyboardButton("❌ Cancel", callback_data=f"cancel:{order['id']}")]]
         )
-        for admin_id in ADMIN_IDS:
+        # Fetch admin IDs from business settings
+        biz_res = supabase.table("businesses").select("settings").eq("id", business_id).single().execute()
+        biz_settings = biz_res.data.get("settings", {}) if biz_res.data else {}
+        admin_ids_str = biz_settings.get("admin_telegram_ids", "")
+        admin_telegram_ids = [int(uid.strip()) for uid in admin_ids_str.split(",") if uid.strip().isdigit()]
+
+        # If no custom IDs set, fall back to hardcoded superadmins (or just skip)
+        if not admin_telegram_ids:
+            admin_telegram_ids = ADMIN_IDS   # keep global fallback
+
+        # Send notification to each admin
+        for admin_id in admin_telegram_ids:
             try:
                 await bot.send_message(
                     chat_id=admin_id,

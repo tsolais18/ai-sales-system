@@ -20,7 +20,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi import Depends
-from auth import verify_password, login_required
+from auth import get_current_user, hash_password, verify_password, login_required
 
 
 from telegram import Update
@@ -71,8 +71,21 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 DEFAULT_BUSINESS_ID = 1
 
 def get_current_business_id(request: Request) -> int:
-    """Get the business_id from session, or fall back to the default."""
-    return request.session.get("current_business_id", DEFAULT_BUSINESS_ID)
+    """Get business_id from session or from the logged-in user."""
+    # First check if a specific business is selected (for superadmin switched)
+    selected = request.session.get("current_business_id")
+    if selected:
+        return selected
+
+    # Fall back to the user's own business
+    user_id = request.session.get("user_id")
+    if user_id:
+        user_res = supabase.table("users").select("business_id", "is_superadmin").eq("id", user_id).single().execute()
+        if user_res.data:
+            if user_res.data["is_superadmin"]:
+                return DEFAULT_BUSINESS_ID   # superadmin sees default, but can switch
+            return user_res.data.get("business_id") or DEFAULT_BUSINESS_ID
+    return DEFAULT_BUSINESS_ID
 
 telegram_app: Application = None
 
@@ -378,15 +391,17 @@ templates.env.cache = None
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     template = templates.get_template("login.html")
-    content = template.render({"request": request})
-    return HTMLResponse(content)
+    return HTMLResponse(template.render({"request": request}))
 
 @app.post("/login")
-async def login(request: Request, password: str = Form(...)):
-    if verify_password(password):
-        request.session["authenticated"] = True
-        return RedirectResponse("/admin", status_code=303)
-    return HTMLResponse("Invalid password", status_code=401)
+async def login(request: Request, email: str = Form(...), password: str = Form(...)):
+    # Look up user by email
+    res = supabase.table("users").select("*").eq("email", email).single().execute()
+    if not res.data or not verify_password(password, res.data["password_hash"]):
+        return HTMLResponse("Invalid email or password", status_code=401)
+    user = res.data
+    request.session["user_id"] = user["id"]
+    return RedirectResponse("/admin", status_code=303)
 
 @app.get("/logout")
 async def logout(request: Request):
@@ -636,6 +651,7 @@ async def api_stats(request: Request):
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, _=Depends(login_required)):
+    user = await get_current_user(request)
     business_id = get_current_business_id(request)
     # Fetch all businesses for the switcher dropdown
     biz_res = supabase.table("businesses").select("id", "name").order("id").execute()
@@ -645,7 +661,8 @@ async def admin_dashboard(request: Request, _=Depends(login_required)):
     content = template.render({
         "request": request,
         "businesses": businesses,
-        "current_business_id": business_id
+        "current_business_id": business_id,
+        "is_superadmin": user.get("is_superadmin", False)
     })
     return HTMLResponse(content)
 
@@ -1028,6 +1045,8 @@ async def save_settings(request: Request, _=Depends(login_required), _csrf=Depen
         "collect_phone": form.get("collect_phone") == "on",
         "collect_email": form.get("collect_email") == "on",
         "mention_price_only_when_asked": form.get("mention_price_only_when_asked") == "on",
+        "admin_telegram_ids": form.get("admin_telegram_ids", ""),
+        "admin_whatsapp_numbers": form.get("admin_whatsapp_numbers", ""),
     }
     supabase.table("businesses") \
         .update({"settings": settings}) \

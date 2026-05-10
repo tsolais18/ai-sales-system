@@ -57,6 +57,28 @@
                 </label>
             </div>
 
+            <!-- Admin Telegram IDs -->
+            <div class="field">
+                <label>Admin Telegram IDs (comma-separated)</label>
+                <input type="text" name="admin_telegram_ids"
+                       value="{{ settings.admin_telegram_ids or '' }}"
+                       placeholder="5851987998,123456789"
+                       class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                       style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg2); color: var(--text);">
+                <p style="font-size:12px;color:var(--text3);margin-top:4px;">These users will receive order notifications.</p>
+            </div>
+
+            <!-- Admin WhatsApp numbers (future) -->
+            <div class="field">
+                <label>Admin WhatsApp Numbers (comma-separated)</label>
+                <input type="text" name="admin_whatsapp_numbers"
+                       value="{{ settings.admin_whatsapp_numbers or '' }}"
+                       placeholder="+2348012345678,+2348098765432"
+                       class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white"
+                       style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg2); color: var(--text);">
+                <p style="font-size:12px;color:var(--text3);margin-top:4px;">Numbers to receive order notifications via WhatsApp (when enabled).</p>
+            </div>
+
             <div style="padding-top:4px;">
                 <button type="submit" class="btn btn-primary">Save Settings</button>
             </div>

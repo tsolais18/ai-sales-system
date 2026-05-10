@@ -727,6 +727,7 @@
             </div>
 
             <!-- Business Switcher -->
+            {% if is_superadmin %}
             <div class="biz-switcher">
                 <select id="business-selector" onchange="switchBusiness(this.value)">
                     {% for biz in businesses %}
@@ -736,6 +737,7 @@
                     {% endfor %}
                 </select>
             </div>
+            {% endif %}
 
             <span class="nav-section-label">Menu</span>
 
