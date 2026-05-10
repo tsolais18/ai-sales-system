@@ -1,0 +1,68 @@
+<div>
+    <div class="section-header">
+        <h2 class="section-title">Dashboard</h2>
+        <span style="font-size:12px;color:var(--text3);font-family:'Geist Mono',monospace;">Overview of your store</span>
+    </div>
+
+    <!-- Summary Cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:16px;margin-bottom:32px;">
+        <!-- Orders Today -->
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;">
+            <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.09em;color:var(--text3);font-family:'Geist Mono',monospace;margin-bottom:8px;">Orders Today</div>
+            <div style="font-size:28px;font-weight:700;color:var(--text);font-family:'Geist Mono',monospace;">{{ stats.today_orders }}</div>
+        </div>
+
+        <!-- Revenue This Month -->
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;">
+            <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.09em;color:var(--text3);font-family:'Geist Mono',monospace;margin-bottom:8px;">Revenue This Month</div>
+            <div style="font-size:28px;font-weight:700;color:var(--success);font-family:'Geist Mono',monospace;">₦{{ "%.0f"|format(stats.month_revenue) }}</div>
+        </div>
+
+        <!-- Pending Orders -->
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;">
+            <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.09em;color:var(--text3);font-family:'Geist Mono',monospace;margin-bottom:8px;">Pending Orders</div>
+            <div style="font-size:28px;font-weight:700;color:var(--warn);font-family:'Geist Mono',monospace;">{{ stats.pending_orders }}</div>
+        </div>
+
+        <!-- Total Products -->
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;">
+            <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.09em;color:var(--text3);font-family:'Geist Mono',monospace;margin-bottom:8px;">Products In Stock</div>
+            <div style="font-size:28px;font-weight:700;color:var(--text);font-family:'Geist Mono',monospace;">{{ stats.in_stock }}</div>
+        </div>
+    </div>
+
+    <!-- Top Products Table -->
+    <div class="table-card">
+        <div style="padding:16px 18px;border-bottom:1px solid var(--border);background:var(--surface2);">
+            <h3 style="font-size:13px;font-weight:600;color:var(--text2);font-family:'Geist Mono',monospace;">Top 5 Products</h3>
+        </div>
+        <div class="table-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Units Sold</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for product in top_products %}
+                    <tr>
+                        <td><span class="customer-name">{{ product.name }}</span></td>
+                        <td><span class="badge badge-in-stock">{{ product.total_sold }}</span></td>
+                    </tr>
+                    {% endfor %}
+                    {% if not top_products %}
+                    <tr>
+                        <td colspan="2">
+                            <div class="empty-state">
+                                <div class="empty-icon">📊</div>
+                                <p>No sales data yet.</p>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

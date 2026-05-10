@@ -4,6 +4,7 @@ import asyncio
 import logging
 import re
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 def escape_markdown(text: str) -> str:
     """Escape characters that Telegram's MarkdownV2 parser interprets."""
@@ -914,6 +915,64 @@ async def settings_page(request: Request, _=Depends(login_required)):
     settings = res.data.get("settings", {}) if res.data else {}
     template = templates.get_template("_settings.html")
     content = template.render({"request": request, "settings": settings})
+    return HTMLResponse(content)
+
+@app.get("/admin/dashboard", response_class=HTMLResponse)
+async def admin_dashboard_home(request: Request, _=Depends(login_required)):
+    business_id = get_current_business_id(request)
+
+    # Stats (orders today, revenue this month, pending, in-stock)
+    now = datetime.now(timezone.utc)
+    today = now.strftime("%Y-%m-%d")
+    this_month = now.strftime("%Y-%m")
+
+    orders_res = supabase.table("orders") \
+        .select("*") \
+        .eq("business_id", business_id) \
+        .execute()
+    all_orders = orders_res.data or []
+
+    products_res = supabase.table("products") \
+        .select("*") \
+        .eq("business_id", business_id) \
+        .execute()
+    all_products = products_res.data or []
+
+    today_orders = [o for o in all_orders if o["created_at"][:10] == today]
+    month_orders = [o for o in all_orders if o["created_at"][:7] == this_month]
+    pending = [o for o in all_orders if o["status"] == "pending"]
+    in_stock = len([p for p in all_products if p["stock"] > 0])
+
+    month_revenue = sum(o["total"] for o in month_orders if o["status"] == "confirmed")
+
+    stats = {
+        "today_orders": len(today_orders),
+        "month_revenue": month_revenue,
+        "pending_orders": len(pending),
+        "in_stock": in_stock,
+    }
+
+    # Top 5 products by quantity sold
+    product_sales = {}
+    for order in all_orders:
+        if order["status"] == "confirmed":
+            items = order.get("items", [])
+            if isinstance(items, str):
+                items = json.loads(items)
+            for item in items:
+                name = item.get("name", "Unknown")
+                qty = item.get("quantity", 0)
+                product_sales[name] = product_sales.get(name, 0) + qty
+
+    top_products = sorted(product_sales.items(), key=lambda x: x[1], reverse=True)[:5]
+    top_products_list = [{"name": name, "total_sold": qty} for name, qty in top_products]
+
+    template = templates.get_template("_dashboard.html")
+    content = template.render({
+        "request": request,
+        "stats": stats,
+        "top_products": top_products_list
+    })
     return HTMLResponse(content)
 
 @app.post("/api/business/settings")

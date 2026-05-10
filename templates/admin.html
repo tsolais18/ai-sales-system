@@ -740,7 +740,16 @@
             <span class="nav-section-label">Menu</span>
 
             <nav style="display:flex;flex-direction:column;gap:2px;">
-                <button class="nav-item active" id="nav-products" hx-get="/admin/products" hx-target="#main-content"
+                <button class="nav-item active" id="nav-dashboard" hx-get="/admin/dashboard" hx-target="#main-content"
+                    hx-indicator="#spinner" onclick="setActive('dashboard'); closeSidebar()">
+                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                    </svg>
+                    Dashboard
+                    <span class="nav-dot"></span>
+                </button>
+                <button class="nav-item" id="nav-products" hx-get="/admin/products" hx-target="#main-content"
                     hx-indicator="#spinner" onclick="setActive('products'); closeSidebar()">
                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8"
                         viewBox="0 0 24 24">
@@ -797,7 +806,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
                 </button>
-                <span class="topbar-title" id="topbar-label">/ products</span>
+                <span class="topbar-title" id="topbar-label">/ dashboard</span>
                 <div class="spinner-wrap htmx-indicator" id="spinner">
                     <div class="spin-ring"></div>
                 </div>
@@ -805,7 +814,7 @@
 
             <!-- Content -->
             <div id="main-content">
-                <div hx-get="/admin/products" hx-trigger="load"></div>
+                <div hx-get="/admin/dashboard" hx-trigger="load"></div>
             </div>
         </div>
     </div>
