@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sell! – Login</title>
+    <title>Sell! – Sign Up</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link
         href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&display=swap"
@@ -146,20 +146,24 @@
             <div class="logo-mark">S</div>
             <span class="logo-text">Sell!</span>
         </div>
-        <h2>Admin login</h2>
-        <form method="POST" action="/login">
+        <h2>Create your account</h2>
+        <form method="POST" action="/signup">
+            <div class="field">
+                <label>Business Name</label>
+                <input type="text" name="business_name" placeholder="Enter business name" required autofocus>
+            </div>
             <div class="field">
                 <label>Email</label>
-                <input type="email" name="email" placeholder="Enter email" required autofocus>
+                <input type="email" name="email" placeholder="Enter email" required>
             </div>
             <div class="field">
                 <label>Password</label>
-                <input type="password" name="password" placeholder="Enter password" required>
+                <input type="password" name="password" placeholder="Min 6 characters" required minlength="6">
             </div>
-            <button type="submit" class="btn">Log in</button>
+            <button type="submit" class="btn">Sign Up</button>
         </form>
         <p style="text-align:center;font-size:13px;color:var(--text3);margin-top:20px;">
-            Don't have an account? <a href="/signup" style="color:var(--text);text-decoration:underline;">Sign up</a>
+            Already have an account? <a href="/login" style="color:var(--text);text-decoration:underline;">Log in</a>
         </p>
     </div>
 </body>

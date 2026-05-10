@@ -388,6 +388,52 @@ templates.env.cache = None
 
 
 # ── Authentication ──────────────────────────────────────
+@app.get("/signup", response_class=HTMLResponse)
+async def signup_page(request: Request):
+    template = templates.get_template("signup.html")
+    return HTMLResponse(template.render({"request": request}))
+
+@app.post("/signup")
+async def signup(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    business_name: str = Form(...)
+):
+    # Basic validation
+    if len(password) < 6:
+        return HTMLResponse("Password must be at least 6 characters", status_code=400)
+    if "@" not in email:
+        return HTMLResponse("Invalid email address", status_code=400)
+
+    # Check if email already exists
+    existing = supabase.table("users").select("id").eq("email", email).execute()
+    if existing.data:
+        return HTMLResponse("An account with this email already exists", status_code=400)
+
+    # Create the business
+    slug = business_name.lower().replace(" ", "-")
+    biz_res = supabase.table("businesses").insert({
+        "name": business_name,
+        "slug": slug,
+    }).execute()
+    business_id = biz_res.data[0]["id"]
+
+    # Create the user
+    password_hash = hash_password(password)   # from auth.py
+    supabase.table("users").insert({
+        "email": email,
+        "password_hash": password_hash,
+        "business_id": business_id,
+        "is_superadmin": False
+    }).execute()
+
+    # Fetch the new user to get its ID
+    user_res = supabase.table("users").select("id").eq("email", email).single().execute()
+    request.session["user_id"] = user_res.data["id"]
+
+    return RedirectResponse("/admin", status_code=303)
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     template = templates.get_template("login.html")
