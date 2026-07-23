@@ -130,7 +130,6 @@ uvicorn main:app --reload --port 8000
 ```
 Visit http://localhost:8000/admin and log in with your admin password.
 
-🧑💻 Built By
-A solo builder turning a bookstore’s ordering problem into a platform for any product business.
+Built By Tsolaa
 
 Sell! is still young, but it's architected for scale.
